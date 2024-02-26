@@ -42,16 +42,26 @@ class color_chart : public ApiVulkanSample
 	void render(float delta_time) override;
 	bool prepare(const vkb::ApplicationOptions &options) override;
 	void create_render_context() override;
+	void setup_render_pass() override;
+	void setup_framebuffer() override;
 
   private:
 	// Sample specific data
-	VkPipeline       sample_pipeline{};
-	VkPipelineLayout sample_pipeline_layout{};
-	VkBuffer         vertexBuffer;
-	VkDeviceMemory   vertexBufferMemory;
-	VkBuffer         indexBuffer;
-	VkDeviceMemory   indexBufferMemory;
-	uint32_t         indexCount;
+	VkPipeline                   sample_pipeline{};
+	VkPipelineLayout             sample_pipeline_layout{};
+	VkPipeline                   upsample_pipeline{};
+	VkPipelineLayout             upsample_pipeline_layout{};
+	VkBuffer                     vertexBuffer;
+	VkDeviceMemory               vertexBufferMemory;
+	VkBuffer                     indexBuffer;
+	VkDeviceMemory               indexBufferMemory;
+	uint32_t                     indexCount;
+	VkDescriptorSetLayout        descriptorSetLayout;
+	VkImage                      textureImage;
+	VkDeviceMemory               textureImageMemory;
+	VkImageView                  textureImageView;
+	VkSampler                    textureSampler;
+	std::vector<VkDescriptorSet> descriptorSets;
 
 	void            createGeometry();
 	void            createVertexBuffer(const std::vector<ColoredVertex2D> &vertices);
@@ -60,6 +70,12 @@ class color_chart : public ApiVulkanSample
 	void            copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 	VkCommandBuffer beginSingleTimeCommands();
 	void            endSingleTimeCommands(VkCommandBuffer commandBuffer);
+	void            createDescriptorSetLayout();
+	void            createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
+	void            createTextureImageView();
+	void            createTextureSampler();
+	void            createDescriptorPool();
+	void            createDescriptorSets();
 };
 
 std::unique_ptr<vkb::VulkanSample> create_color_chart();
