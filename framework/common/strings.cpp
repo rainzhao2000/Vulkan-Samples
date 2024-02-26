@@ -425,21 +425,23 @@ const std::string to_string(VkSurfaceTransformFlagBitsKHR transform_flag)
 	}
 }
 
+const std::string to_string(VkColorSpaceKHR color_space)
+{
+	switch (color_space)
+	{
+		case VK_COLORSPACE_SRGB_NONLINEAR_KHR:
+			return "VK_COLORSPACE_SRGB_NONLINEAR_KHR";
+		case VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT:
+			return "VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT";
+		default:
+			return "UNKNOWN COLOR SPACE";
+	}
+}
+
 const std::string to_string(VkSurfaceFormatKHR surface_format)
 {
 	std::string surface_format_string = to_string(surface_format.format) + ", ";
-
-	switch (surface_format.colorSpace)
-	{
-		case VK_COLORSPACE_SRGB_NONLINEAR_KHR:
-			surface_format_string += "VK_COLORSPACE_SRGB_NONLINEAR_KHR";
-			break;
-		case VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT:
-			surface_format_string += "VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT";
-			break;
-		default:
-			surface_format_string += "UNKNOWN COLOR SPACE";
-	}
+	surface_format_string += to_string(surface_format.colorSpace);
 	return surface_format_string;
 }
 

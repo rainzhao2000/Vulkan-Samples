@@ -73,6 +73,13 @@ const std::string to_string(VkPhysicalDeviceType type);
 const std::string to_string(VkSurfaceTransformFlagBitsKHR transform_flag);
 
 /**
+ * @brief Helper function to convert a VkColorSpaceKHR format to a string
+ * @param color_space Vulkan color space to convert.
+ * @return The string to return.
+ */
+const std::string to_string(VkColorSpaceKHR color_space);
+
+/**
  * @brief Helper function to convert a VkSurfaceFormatKHR format to a string
  * @param surface_format Vulkan surface format to convert.
  * @return The string to return.

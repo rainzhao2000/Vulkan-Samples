@@ -123,6 +123,8 @@ class Swapchain
 
 	VkFormat get_format() const;
 
+	VkColorSpaceKHR get_color_space() const;
+
 	const std::vector<VkImage> &get_images() const;
 
 	VkSurfaceTransformFlagBitsKHR get_transform() const;

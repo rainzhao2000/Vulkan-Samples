@@ -481,6 +481,11 @@ VkFormat Swapchain::get_format() const
 	return properties.surface_format.format;
 }
 
+VkColorSpaceKHR Swapchain::get_color_space() const
+{
+	return properties.surface_format.colorSpace;
+}
+
 const std::vector<VkImage> &Swapchain::get_images() const
 {
 	return images;
