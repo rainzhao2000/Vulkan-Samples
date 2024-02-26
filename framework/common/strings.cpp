@@ -434,6 +434,9 @@ const std::string to_string(VkSurfaceFormatKHR surface_format)
 		case VK_COLORSPACE_SRGB_NONLINEAR_KHR:
 			surface_format_string += "VK_COLORSPACE_SRGB_NONLINEAR_KHR";
 			break;
+		case VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT:
+			surface_format_string += "VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT";
+			break;
 		default:
 			surface_format_string += "UNKNOWN COLOR SPACE";
 	}
