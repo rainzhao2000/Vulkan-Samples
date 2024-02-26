@@ -977,6 +977,7 @@ void Gui::show_simple_window(const std::string &name, uint32_t last_fps, std::fu
 	ImGui::TextUnformatted(std::string(sample.get_render_context().get_device().get_gpu().get_properties().deviceName).c_str());
 	ImGui::TextUnformatted(vkb::to_string(sample.get_render_context().get_format()).c_str());
 	ImGui::TextUnformatted(vkb::to_string(sample.get_render_context().get_swapchain().get_color_space()).c_str());
+	ImGui::TextUnformatted(vkb::to_string(sample.get_render_context().get_surface_extent()).c_str());
 	ImGui::Text("%.2f ms/frame (%.1d fps)", (1000.0f / last_fps), last_fps);
 	ImGui::PushItemWidth(110.0f * dpi_factor);
 
