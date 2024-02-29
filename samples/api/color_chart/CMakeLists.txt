@@ -27,4 +27,6 @@ add_sample(
     DESCRIPTION "Display color chart for camera testing"
     SHADER_FILES_GLSL
         "shader.vert"
-        "shader.frag")
+        "shader.frag"
+        "quad.vert"
+        "texture.frag")

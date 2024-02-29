@@ -42,17 +42,32 @@ class color_chart : public ApiVulkanSample
 	void render(float delta_time) override;
 	bool prepare(const vkb::ApplicationOptions &options) override;
 	void create_render_context() override;
+	void setup_render_pass() override;
 
   private:
 	// Sample specific data
-	VkPipeline       sample_pipeline{};
-	VkPipelineLayout sample_pipeline_layout{};
-	VkBuffer         vertexBuffer;
-	VkDeviceMemory   vertexBufferMemory;
-	VkBuffer         indexBuffer;
-	VkDeviceMemory   indexBufferMemory;
-	uint32_t         indexCount;
+	std::vector<VkImage>         textureImages;
+	std::vector<VkDeviceMemory>  textureImageMemories;
+	std::vector<VkImageView>     textureImageViews;
+	VkRenderPass                 sample_render_pass;
+	VkDescriptorSetLayout        descriptorSetLayout;
+	VkPipeline                   sample_pipeline{};
+	VkPipelineLayout             sample_pipeline_layout{};
+	VkPipeline                   upsample_pipeline{};
+	VkPipelineLayout             upsample_pipeline_layout{};
+	std::vector<VkFramebuffer>   sample_framebuffers;
+	VkBuffer                     vertexBuffer;
+	VkDeviceMemory               vertexBufferMemory;
+	VkBuffer                     indexBuffer;
+	VkDeviceMemory               indexBufferMemory;
+	uint32_t                     indexCount;
+	VkSampler                    textureSampler;
+	std::vector<VkDescriptorSet> descriptor_sets;
 
+	void            createDescriptorSetLayout();
+	void            createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
+	void            createTextureImageView(const VkImage &textureImage, VkImageView &textureImageView);
+	void            createSampleFramebuffer(const VkImageView &textureImageView, VkFramebuffer &framebuffer);
 	void            createGeometry();
 	void            createVertexBuffer(const std::vector<ColoredVertex2D> &vertices);
 	void            createIndexBuffer(const std::vector<uint16_t> &indices);
@@ -60,6 +75,9 @@ class color_chart : public ApiVulkanSample
 	void            copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 	VkCommandBuffer beginSingleTimeCommands();
 	void            endSingleTimeCommands(VkCommandBuffer commandBuffer);
+	void            createTextureSampler();
+	void            createDescriptorPool();
+	void            createDescriptorSets();
 };
 
 std::unique_ptr<vkb::VulkanSample> create_color_chart();
