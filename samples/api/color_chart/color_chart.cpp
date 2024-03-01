@@ -17,9 +17,14 @@
 
 #include "color_chart.h"
 
-const uint32_t SAMPLE_WIDTH  = 256;
-const uint32_t SAMPLE_HEIGHT = 128;
+const uint32_t CUBE_SIZE     = 24;
+const uint32_t COLUMN_COUNT  = 6;
+const uint32_t ROW_COUNT     = 4;
+const uint32_t PADDING       = 1;
+const uint32_t SAMPLE_WIDTH  = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING;
+const uint32_t SAMPLE_HEIGHT = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
 const VkFormat SAMPLE_FORMAT = VK_FORMAT_R16G16B16A16_UNORM;
+const bool     DRAW_UI       = true;
 
 VkVertexInputBindingDescription ColoredVertex2D::getBindingDescription()
 {
@@ -178,25 +183,25 @@ void color_chart::setup_render_pass()
 	sample_subpass_description.pColorAttachments    = &color_reference;
 
 	VkSubpassDescription subpass_description    = {};
-	subpass_description.pipelineBindPoint                = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass_description.colorAttachmentCount             = 1;
-	subpass_description.pColorAttachments                = &color_reference;
-	subpass_description.pDepthStencilAttachment          = &depth_reference;
-	subpass_description.inputAttachmentCount             = 0;
-	subpass_description.pInputAttachments                = nullptr;
-	subpass_description.preserveAttachmentCount          = 0;
-	subpass_description.pPreserveAttachments             = nullptr;
-	subpass_description.pResolveAttachments              = nullptr;
+	subpass_description.pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass_description.colorAttachmentCount    = 1;
+	subpass_description.pColorAttachments       = &color_reference;
+	subpass_description.pDepthStencilAttachment = &depth_reference;
+	subpass_description.inputAttachmentCount    = 0;
+	subpass_description.pInputAttachments       = nullptr;
+	subpass_description.preserveAttachmentCount = 0;
+	subpass_description.pPreserveAttachments    = nullptr;
+	subpass_description.pResolveAttachments     = nullptr;
 
 	// Subpass dependencies for layout transitions
 	VkSubpassDependency dependency = {};
-	dependency.srcSubpass                 = VK_SUBPASS_EXTERNAL;
-	dependency.dstSubpass                 = 0;
-	dependency.srcStageMask               = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-	dependency.dstStageMask               = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	dependency.srcAccessMask              = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-	dependency.dstAccessMask              = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-	dependency.dependencyFlags            = VK_DEPENDENCY_BY_REGION_BIT;
+	dependency.srcSubpass          = VK_SUBPASS_EXTERNAL;
+	dependency.dstSubpass          = 0;
+	dependency.srcStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	dependency.dstStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	dependency.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependency.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependency.dependencyFlags     = VK_DEPENDENCY_BY_REGION_BIT;
 
 	VkRenderPassCreateInfo sample_render_pass_create_info = {};
 	sample_render_pass_create_info.sType                  = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -396,7 +401,8 @@ void color_chart::build_command_buffers()
 		vkCmdDraw(cmd, 6, 1, 0, 0);
 
 		// Draw user interface.
-		draw_ui(cmd);
+		if (DRAW_UI)
+			draw_ui(cmd);
 
 		// Complete render pass.
 		vkCmdEndRenderPass(cmd);
@@ -490,32 +496,38 @@ void color_chart::createGeometry()
 {
 	std::vector<ColoredVertex2D> vertices;
 	std::vector<uint16_t>        indices;
-	int                          nrows = 4;
-	int                          ncols = 8;
-	// int   nrows     = 3;
-	// int   ncols     = 7;
-	float paddingx  = 0.0f;        // 0.005f;
-	float paddingy  = 0.0f;        // 0.01f;
-	float spaceSize = 2.0f;
-	float xSize     = spaceSize - paddingx * 2;
-	float ySize     = spaceSize - paddingy * 2;
-	float xoffset   = -xSize / 2;
-	float yoffset   = -ySize / 2;
-	float bmax      = nrows * ncols - 1;
-	float boffset   = 0.0f;
+	float                        ncols     = (float) COLUMN_COUNT;
+	float                        nrows     = (float) ROW_COUNT;
+	float                        paddingx  = ((float) PADDING) / SAMPLE_WIDTH;
+	float                        paddingy  = paddingx * ncols / nrows;
+	float                        spaceSize = 2.0f;
+	float                        xSize     = spaceSize - paddingx * 2;
+	float                        ySize     = spaceSize - paddingy * 2;
+	float                        xoffset   = -xSize / 2;
+	float                        yoffset   = -ySize / 2;
+	float                        bmax      = nrows * ncols - 1;
+	float                        boffset   = 0.0f;
 	// float bmax      = 3.0f * nrows * ncols - 1;
 	// float boffset = 2.0f * nrows * ncols / bmax;
 	int index = vertices.size();
-	for (int row = 0; row < nrows; ++row)
+	for (int row = 0; row < ROW_COUNT; ++row)
 	{
-		for (int col = 0; col < ncols; ++col)
+		for (int col = 0; col < COLUMN_COUNT; ++col)
 		{
 			float b = ((nrows - 1 - row) * ncols + col) / bmax + boffset;
 			// LOGI("row: {}, col: {}, b: {}", row, col, b);
-			vertices.emplace_back(ColoredVertex2D{{xSize * col / ncols + xoffset + paddingx, ySize * row / nrows + yoffset + paddingy}, {0.0f, 1.0f, b}});
-			vertices.emplace_back(ColoredVertex2D{{xSize * (1 + col) / ncols + xoffset - paddingx, ySize * row / nrows + yoffset + paddingy}, {1.0f, 1.0f, b}});
-			vertices.emplace_back(ColoredVertex2D{{xSize * (1 + col) / ncols + xoffset - paddingx, ySize * (1 + row) / nrows + yoffset - paddingy}, {1.0f, 0.0f, b}});
-			vertices.emplace_back(ColoredVertex2D{{xSize * col / ncols + xoffset + paddingx, ySize * (1 + row) / nrows + yoffset - paddingy}, {0.0f, 0.0f, b}});
+			vertices.emplace_back(ColoredVertex2D{
+			    {xSize * col / ncols + xoffset + paddingx, ySize * row / nrows + yoffset + paddingy},
+			    {0.0f, 1.0f, b}});
+			vertices.emplace_back(ColoredVertex2D{
+			    {xSize * (1 + col) / ncols + xoffset - paddingx, ySize * row / nrows + yoffset + paddingy},
+			    {1.0f, 1.0f, b}});
+			vertices.emplace_back(ColoredVertex2D{
+			    {xSize * (1 + col) / ncols + xoffset - paddingx, ySize * (1 + row) / nrows + yoffset - paddingy},
+			    {1.0f, 0.0f, b}});
+			vertices.emplace_back(ColoredVertex2D{
+			    {xSize * col / ncols + xoffset + paddingx, ySize * (1 + row) / nrows + yoffset - paddingy},
+			    {0.0f, 0.0f, b}});
 			indices.emplace_back(index);
 			indices.emplace_back(index + 1);
 			indices.emplace_back(index + 2);
