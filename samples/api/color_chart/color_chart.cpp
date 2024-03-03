@@ -17,14 +17,17 @@
 
 #include "color_chart.h"
 
-const uint32_t CUBE_SIZE     = 24;
-const uint32_t COLUMN_COUNT  = 6;
-const uint32_t ROW_COUNT     = 4;
-const uint32_t PADDING       = 1;
-const uint32_t SAMPLE_WIDTH  = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING;
-const uint32_t SAMPLE_HEIGHT = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
-const VkFormat SAMPLE_FORMAT = VK_FORMAT_R16G16B16A16_UNORM;
-const bool     DRAW_UI       = true;
+const uint32_t           CUBE_SIZE           = 24;
+const uint32_t           COLUMN_COUNT        = 6;
+const uint32_t           ROW_COUNT           = 4;
+const uint32_t           PADDING             = 1;
+const uint32_t           SAMPLE_WIDTH        = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING;
+const uint32_t           SAMPLE_HEIGHT       = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
+const uint32_t           SAVE_WIDTH          = 6000;
+const uint32_t           SAVE_HEIGTH         = 4000;
+const VkFormat           SAMPLE_FORMAT       = VK_FORMAT_R16G16B16A16_UNORM;
+const VkSurfaceFormatKHR SAVE_SURFACE_FORMAT = {VK_FORMAT_R16G16B16A16_UNORM, VK_COLOR_SPACE_ADOBERGB_LINEAR_EXT};
+const bool               DRAW_UI             = true;
 
 VkVertexInputBindingDescription ColoredVertex2D::getBindingDescription()
 {
@@ -55,6 +58,12 @@ color_chart::~color_chart()
 
 		vkDestroyBuffer(get_device().get_handle(), vertexBuffer, nullptr);
 		vkFreeMemory(get_device().get_handle(), vertexBufferMemory, nullptr);
+
+		vkDestroyImageView(get_device().get_handle(), savedImageView, nullptr);
+		vkDestroyImage(get_device().get_handle(), savedImage, nullptr);
+		vkFreeMemory(get_device().get_handle(), savedImageMemory, nullptr);
+
+		vkDestroyFramebuffer(get_device().get_handle(), saved_framebuffer, nullptr);
 
 		for (const auto &view : textureImageViews)
 		{
@@ -134,6 +143,17 @@ void color_chart::create_render_context()
 	                                                             {VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR}};
 
 	VulkanSample::create_render_context(surface_priority_list);
+
+	createImage(
+	    SAVE_WIDTH,
+	    SAVE_HEIGTH,
+	    SAVE_SURFACE_FORMAT.format,
+	    VK_IMAGE_TILING_OPTIMAL,
+	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+	    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+	    savedImage,
+	    savedImageMemory);
+	createTextureImageView(savedImage, savedImageView);
 }
 
 void color_chart::setup_render_pass()
@@ -223,6 +243,65 @@ void color_chart::setup_render_pass()
 	VK_CHECK(vkCreateRenderPass(get_device().get_handle(), &sample_render_pass_create_info, nullptr, &sample_render_pass));
 
 	VK_CHECK(vkCreateRenderPass(get_device().get_handle(), &render_pass_create_info, nullptr, &render_pass));
+}
+
+void color_chart::setup_framebuffer()
+{
+	VkImageView attachments[2];
+
+	// Depth/Stencil attachment is the same for all frame buffers
+	attachments[1] = depth_stencil.view;
+
+	VkFramebufferCreateInfo framebuffer_create_info = {};
+	framebuffer_create_info.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	framebuffer_create_info.pNext                   = NULL;
+	framebuffer_create_info.renderPass              = render_pass;
+	framebuffer_create_info.attachmentCount         = 2;
+	framebuffer_create_info.pAttachments            = attachments;
+	framebuffer_create_info.width                   = get_render_context().get_surface_extent().width;
+	framebuffer_create_info.height                  = get_render_context().get_surface_extent().height;
+	framebuffer_create_info.layers                  = 1;
+
+	// Delete existing frame buffers
+	if (framebuffers.size() > 0)
+	{
+		for (uint32_t i = 0; i < framebuffers.size(); i++)
+		{
+			if (framebuffers[i] != VK_NULL_HANDLE)
+			{
+				vkDestroyFramebuffer(device->get_handle(), framebuffers[i], nullptr);
+			}
+		}
+	}
+
+	// Create frame buffers for every swap chain image
+	framebuffers.resize(render_context->get_render_frames().size());
+	for (uint32_t i = 0; i < framebuffers.size(); i++)
+	{
+		attachments[0] = swapchain_buffers[i].view;
+		VK_CHECK(vkCreateFramebuffer(device->get_handle(), &framebuffer_create_info, nullptr, &framebuffers[i]));
+	}
+}
+
+void color_chart::input_event(const vkb::InputEvent &input_event)
+{
+	ApiVulkanSample::input_event(input_event);
+	if (input_event.get_source() == vkb::EventSource::Keyboard)
+	{
+		const auto &key_button = static_cast<const vkb::KeyInputEvent &>(input_event);
+
+		if (key_button.get_action() == vkb::KeyAction::Down)
+		{
+			switch (key_button.get_code())
+			{
+				case vkb::KeyCode::F2:
+					exportImage();
+					break;
+				default:
+					break;
+			}
+		}
+	}
 }
 
 void color_chart::prepare_pipelines()
@@ -684,6 +763,11 @@ void color_chart::createDescriptorSets()
 		VkWriteDescriptorSet  descriptorWrite = vkb::initializers::write_descriptor_set(descriptor_sets[i], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, &imageInfo, 1);
 		vkUpdateDescriptorSets(get_device().get_handle(), 1, &descriptorWrite, 0, nullptr);
 	}
+}
+
+void color_chart::exportImage()
+{
+	LOGI("Exporting image.");
 }
 
 std::unique_ptr<vkb::VulkanSample> create_color_chart()

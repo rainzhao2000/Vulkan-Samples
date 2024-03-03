@@ -43,12 +43,17 @@ class color_chart : public ApiVulkanSample
 	bool prepare(const vkb::ApplicationOptions &options) override;
 	void create_render_context() override;
 	void setup_render_pass() override;
+	void setup_framebuffer() override;
+	void input_event(const vkb::InputEvent &input_event) override;
 
   private:
 	// Sample specific data
 	std::vector<VkImage>         textureImages;
 	std::vector<VkDeviceMemory>  textureImageMemories;
 	std::vector<VkImageView>     textureImageViews;
+	VkImage                      savedImage;
+	VkDeviceMemory               savedImageMemory;
+	VkImageView                  savedImageView;
 	VkRenderPass                 sample_render_pass;
 	VkDescriptorSetLayout        descriptorSetLayout;
 	VkPipeline                   sample_pipeline{};
@@ -56,6 +61,7 @@ class color_chart : public ApiVulkanSample
 	VkPipeline                   upsample_pipeline{};
 	VkPipelineLayout             upsample_pipeline_layout{};
 	std::vector<VkFramebuffer>   sample_framebuffers;
+	VkFramebuffer                saved_framebuffer;
 	VkBuffer                     vertexBuffer;
 	VkDeviceMemory               vertexBufferMemory;
 	VkBuffer                     indexBuffer;
@@ -78,6 +84,7 @@ class color_chart : public ApiVulkanSample
 	void            createTextureSampler();
 	void            createDescriptorPool();
 	void            createDescriptorSets();
+	void            exportImage();
 };
 
 std::unique_ptr<vkb::VulkanSample> create_color_chart();
