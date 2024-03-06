@@ -17,17 +17,27 @@
 
 #include "color_chart.h"
 
-const uint32_t           CUBE_SIZE           = 24;
-const uint32_t           COLUMN_COUNT        = 6;
-const uint32_t           ROW_COUNT           = 4;
-const uint32_t           PADDING             = 1;
-const uint32_t           SAMPLE_WIDTH        = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING;
-const uint32_t           SAMPLE_HEIGHT       = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
-const uint32_t           SAVE_WIDTH          = 6000;
-const uint32_t           SAVE_HEIGTH         = 4000;
-const VkFormat           SAMPLE_FORMAT       = VK_FORMAT_R16G16B16A16_UNORM;
-const VkSurfaceFormatKHR SAVE_SURFACE_FORMAT = {VK_FORMAT_R16G16B16A16_UNORM, VK_COLOR_SPACE_ADOBERGB_LINEAR_EXT};
-const bool               DRAW_UI             = true;
+const uint32_t CUBE_SIZE            = 24;
+const uint32_t COLUMN_COUNT         = 6;
+const uint32_t ROW_COUNT            = 4;
+const uint32_t PADDING              = 1;
+const uint32_t SAMPLE_WIDTH         = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING;
+const uint32_t SAMPLE_HEIGHT        = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
+const uint32_t SAVE_WIDTH           = 2976;        // has to be multiple of 32 for stbi_write_png to be properly aligned, idk why
+const uint32_t SAVE_HEIGHT          = 1984;
+const VkFormat SAMPLE_FORMAT        = VK_FORMAT_R8G8B8A8_UNORM;
+const VkFormat SAVE_FORMAT          = VK_FORMAT_R8G8B8A8_UNORM;
+const uint32_t SAVE_COMPONENTS      = 4;
+const uint32_t SAVE_BYTES_PER_COMP  = 1;
+const char    *SAVED_IMAGE_FILENAME = "color_chart";
+const bool     DRAW_UI              = false;
+const float    MAX_TIME             = 5.0f;        // seconds
+
+struct PushConstant
+{
+	float time;        // seconds
+	float dt;          // seconds
+};
 
 VkVertexInputBindingDescription ColoredVertex2D::getBindingDescription()
 {
@@ -83,6 +93,8 @@ color_chart::~color_chart()
 			vkDestroyFramebuffer(get_device().get_handle(), framebuffer, nullptr);
 		}
 
+		vkDestroyPipeline(get_device().get_handle(), save_pipeline, nullptr);
+
 		vkDestroyPipeline(get_device().get_handle(), upsample_pipeline, nullptr);
 		vkDestroyPipelineLayout(get_device().get_handle(), upsample_pipeline_layout, nullptr);
 
@@ -91,7 +103,10 @@ color_chart::~color_chart()
 
 		vkDestroyDescriptorSetLayout(get_device().get_handle(), descriptorSetLayout, nullptr);
 
+		vkDestroyRenderPass(get_device().get_handle(), save_render_pass, nullptr);
 		vkDestroyRenderPass(get_device().get_handle(), sample_render_pass, nullptr);
+
+		vkDestroyFence(get_device().get_handle(), savedFence, nullptr);
 	}
 }
 
@@ -107,13 +122,14 @@ bool color_chart::prepare(const vkb::ApplicationOptions &options)
 
 	createDescriptorSetLayout();
 	prepare_pipelines();
-	size_t cmd_buffer_count = draw_cmd_buffers.size();
+	cmd_buffer_count = draw_cmd_buffers.size() + 1;        // last cmd buffer is for saving image
 	textureImages.resize(cmd_buffer_count);
 	textureImageMemories.resize(cmd_buffer_count);
 	textureImageViews.resize(cmd_buffer_count);
 	sample_framebuffers.resize(cmd_buffer_count);
 	for (uint32_t i = 0; i < cmd_buffer_count; ++i)
 	{
+		// Render target of sample pass
 		createImage(
 		    SAMPLE_WIDTH,
 		    SAMPLE_HEIGHT,
@@ -126,12 +142,26 @@ bool color_chart::prepare(const vkb::ApplicationOptions &options)
 		createTextureImageView(textureImages[i], textureImageViews[i]);
 		createSampleFramebuffer(textureImageViews[i], sample_framebuffers[i]);
 	}
+	// Render target of save pass
+	createImage(
+	    SAVE_WIDTH,
+	    SAVE_HEIGHT,
+	    SAVE_FORMAT,
+	    VK_IMAGE_TILING_LINEAR,
+	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+	    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+	    savedImage,
+	    savedImageMemory);
+	createTextureImageView(savedImage, savedImageView);
+	createSavedFramebuffer();
 	createGeometry();
 	createTextureSampler();
 	createDescriptorPool();
 	createDescriptorSets();
+	createSaveCommandBuffer();
 	build_command_buffers();
-	prepared = true;
+	startTime = std::chrono::high_resolution_clock::now();
+	prepared  = true;
 	return true;
 }
 
@@ -143,17 +173,6 @@ void color_chart::create_render_context()
 	                                                             {VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR}};
 
 	VulkanSample::create_render_context(surface_priority_list);
-
-	createImage(
-	    SAVE_WIDTH,
-	    SAVE_HEIGTH,
-	    SAVE_SURFACE_FORMAT.format,
-	    VK_IMAGE_TILING_OPTIMAL,
-	    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-	    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-	    savedImage,
-	    savedImageMemory);
-	createTextureImageView(savedImage, savedImageView);
 }
 
 void color_chart::setup_render_pass()
@@ -188,6 +207,17 @@ void color_chart::setup_render_pass()
 	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	attachments[1].initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
 	attachments[1].finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentDescription save_attachment = {};
+	// Color attachment
+	save_attachment.format         = SAVE_FORMAT;
+	save_attachment.samples        = VK_SAMPLE_COUNT_1_BIT;
+	save_attachment.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	save_attachment.storeOp        = VK_ATTACHMENT_STORE_OP_STORE;
+	save_attachment.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	save_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	save_attachment.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
+	save_attachment.finalLayout    = VK_IMAGE_LAYOUT_GENERAL;
 
 	VkAttachmentReference color_reference = {};
 	color_reference.attachment            = 0;
@@ -240,47 +270,19 @@ void color_chart::setup_render_pass()
 	render_pass_create_info.dependencyCount        = 1;
 	render_pass_create_info.pDependencies          = &dependency;
 
+	VkRenderPassCreateInfo save_render_pass_create_info = vkb::initializers::render_pass_create_info();
+	save_render_pass_create_info.attachmentCount        = 1;
+	save_render_pass_create_info.pAttachments           = &save_attachment;
+	save_render_pass_create_info.subpassCount           = 1;
+	save_render_pass_create_info.pSubpasses             = &sample_subpass_description;
+	save_render_pass_create_info.dependencyCount        = 1;
+	save_render_pass_create_info.pDependencies          = &dependency;
+
 	VK_CHECK(vkCreateRenderPass(get_device().get_handle(), &sample_render_pass_create_info, nullptr, &sample_render_pass));
 
 	VK_CHECK(vkCreateRenderPass(get_device().get_handle(), &render_pass_create_info, nullptr, &render_pass));
-}
 
-void color_chart::setup_framebuffer()
-{
-	VkImageView attachments[2];
-
-	// Depth/Stencil attachment is the same for all frame buffers
-	attachments[1] = depth_stencil.view;
-
-	VkFramebufferCreateInfo framebuffer_create_info = {};
-	framebuffer_create_info.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-	framebuffer_create_info.pNext                   = NULL;
-	framebuffer_create_info.renderPass              = render_pass;
-	framebuffer_create_info.attachmentCount         = 2;
-	framebuffer_create_info.pAttachments            = attachments;
-	framebuffer_create_info.width                   = get_render_context().get_surface_extent().width;
-	framebuffer_create_info.height                  = get_render_context().get_surface_extent().height;
-	framebuffer_create_info.layers                  = 1;
-
-	// Delete existing frame buffers
-	if (framebuffers.size() > 0)
-	{
-		for (uint32_t i = 0; i < framebuffers.size(); i++)
-		{
-			if (framebuffers[i] != VK_NULL_HANDLE)
-			{
-				vkDestroyFramebuffer(device->get_handle(), framebuffers[i], nullptr);
-			}
-		}
-	}
-
-	// Create frame buffers for every swap chain image
-	framebuffers.resize(render_context->get_render_frames().size());
-	for (uint32_t i = 0; i < framebuffers.size(); i++)
-	{
-		attachments[0] = swapchain_buffers[i].view;
-		VK_CHECK(vkCreateFramebuffer(device->get_handle(), &framebuffer_create_info, nullptr, &framebuffers[i]));
-	}
+	VK_CHECK(vkCreateRenderPass(get_device().get_handle(), &save_render_pass_create_info, nullptr, &save_render_pass));
 }
 
 void color_chart::input_event(const vkb::InputEvent &input_event)
@@ -306,9 +308,17 @@ void color_chart::input_event(const vkb::InputEvent &input_event)
 
 void color_chart::prepare_pipelines()
 {
-	// Create a blank pipeline layout.
-	// We are not binding any resources to the pipeline in this sample.
+	// Sample pipeline
+	VkPushConstantRange range = {};
+	range.stageFlags          = VK_SHADER_STAGE_FRAGMENT_BIT;
+	range.offset              = 0;
+	range.size                = sizeof(PushConstant);
+
 	VkPipelineLayoutCreateInfo layout_info = vkb::initializers::pipeline_layout_create_info(nullptr, 0);
+	layout_info.pNext                      = nullptr;
+	layout_info.flags                      = 0;
+	layout_info.pushConstantRangeCount     = 1;
+	layout_info.pPushConstantRanges        = &range;
 	VK_CHECK(vkCreatePipelineLayout(get_device().get_handle(), &layout_info, nullptr, &sample_pipeline_layout));
 
 	VkPipelineVertexInputStateCreateInfo vertex_input = vkb::initializers::pipeline_vertex_input_state_create_info();
@@ -336,7 +346,7 @@ void color_chart::prepare_pipelines()
 	VkPipelineViewportStateCreateInfo viewport = vkb::initializers::pipeline_viewport_state_create_info(1, 1);
 
 	// Disable depth testing (using reversed depth-buffer for increased precision).
-	VkPipelineDepthStencilStateCreateInfo depth_stencil = vkb::initializers::pipeline_depth_stencil_state_create_info(VK_FALSE, VK_FALSE, VK_COMPARE_OP_GREATER);
+	VkPipelineDepthStencilStateCreateInfo depth_stencil = vkb::initializers::pipeline_depth_stencil_state_create_info(VK_FALSE, VK_FALSE, VK_COMPARE_OP_ALWAYS);
 
 	// No multisampling.
 	VkPipelineMultisampleStateCreateInfo multisample = vkb::initializers::pipeline_multisample_state_create_info(VK_SAMPLE_COUNT_1_BIT);
@@ -389,106 +399,48 @@ void color_chart::prepare_pipelines()
 	upsample_pipeline_create_info.pDepthStencilState           = &depth_stencil;
 	upsample_pipeline_create_info.pDynamicState                = &dynamic;
 
+	VkGraphicsPipelineCreateInfo save_pipeline_create_info = vkb::initializers::pipeline_create_info(upsample_pipeline_layout, save_render_pass);
+	save_pipeline_create_info.stageCount                   = vkb::to_u32(upsample_shader_stages.size());
+	save_pipeline_create_info.pStages                      = upsample_shader_stages.data();
+	save_pipeline_create_info.pVertexInputState            = &vertex_input;
+	save_pipeline_create_info.pInputAssemblyState          = &input_assembly;
+	save_pipeline_create_info.pRasterizationState          = &raster;
+	save_pipeline_create_info.pColorBlendState             = &blend;
+	save_pipeline_create_info.pMultisampleState            = &multisample;
+	save_pipeline_create_info.pViewportState               = &viewport;
+	save_pipeline_create_info.pDepthStencilState           = &depth_stencil;
+	save_pipeline_create_info.pDynamicState                = &dynamic;
+
 	VK_CHECK(vkCreateGraphicsPipelines(get_device().get_handle(), VK_NULL_HANDLE, 1, &upsample_pipeline_create_info, nullptr, &upsample_pipeline));
+
+	VK_CHECK(vkCreateGraphicsPipelines(get_device().get_handle(), VK_NULL_HANDLE, 1, &save_pipeline_create_info, nullptr, &save_pipeline));
+}
+
+void color_chart::create_command_pool()
+{
+	VkCommandPoolCreateInfo command_pool_info = {};
+	command_pool_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	command_pool_info.flags                   = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	command_pool_info.queueFamilyIndex        = get_device().get_queue_by_flags(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, 0).get_family_index();
+	VK_CHECK(vkCreateCommandPool(get_device().get_handle(), &command_pool_info, nullptr, &cmd_pool));
 }
 
 void color_chart::build_command_buffers()
 {
-	VkCommandBufferBeginInfo command_buffer_begin_info = vkb::initializers::command_buffer_begin_info();
-
-	// Clear color and depth values.
-	VkClearValue clear_values[2];
-	clear_values[0].color        = {{0.0f, 0.0f, 0.0f, 0.0f}};
-	clear_values[1].depthStencil = {0.0f, 0};
-
-	// Begin the render pass.
-	VkRenderPassBeginInfo sample_render_pass_begin_info    = vkb::initializers::render_pass_begin_info();
-	sample_render_pass_begin_info.renderPass               = sample_render_pass;
-	sample_render_pass_begin_info.renderArea.offset.x      = 0;
-	sample_render_pass_begin_info.renderArea.offset.y      = 0;
-	sample_render_pass_begin_info.renderArea.extent.width  = SAMPLE_WIDTH;
-	sample_render_pass_begin_info.renderArea.extent.height = SAMPLE_HEIGHT;
-	sample_render_pass_begin_info.clearValueCount          = 1;
-	sample_render_pass_begin_info.pClearValues             = clear_values;
-
-	VkRenderPassBeginInfo render_pass_begin_info    = vkb::initializers::render_pass_begin_info();
-	render_pass_begin_info.renderPass               = render_pass;
-	render_pass_begin_info.renderArea.offset.x      = 0;
-	render_pass_begin_info.renderArea.offset.y      = 0;
-	render_pass_begin_info.renderArea.extent.width  = width;
-	render_pass_begin_info.renderArea.extent.height = height;
-	render_pass_begin_info.clearValueCount          = 2;
-	render_pass_begin_info.pClearValues             = clear_values;
-
-	for (int32_t i = 0; i < draw_cmd_buffers.size(); ++i)
+	for (int32_t i = 0; i < cmd_buffer_count; ++i)
 	{
-		auto cmd = draw_cmd_buffers[i];
-
-		// Begin command buffer.
-		vkBeginCommandBuffer(cmd, &command_buffer_begin_info);
-
-		// Set framebuffer for this command buffer.
-		sample_render_pass_begin_info.framebuffer = sample_framebuffers[i];
-
-		// We will add draw commands in the same command buffer.
-		vkCmdBeginRenderPass(cmd, &sample_render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-		// Bind the graphics pipeline.
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sample_pipeline);
-
-		// Set viewport dynamically
-		VkViewport viewport = vkb::initializers::viewport(static_cast<float>(SAMPLE_WIDTH), static_cast<float>(SAMPLE_HEIGHT), 0.0f, 1.0f);
-		vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-		// Set scissor dynamically
-		VkRect2D scissor = vkb::initializers::rect2D(SAMPLE_WIDTH, SAMPLE_HEIGHT, 0, 0);
-		vkCmdSetScissor(cmd, 0, 1, &scissor);
-
-		// Bind geometry
-		VkBuffer     vertexBuffers[] = {vertexBuffer};
-		VkDeviceSize offsets[]       = {0};
-		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
-		vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
-
-		// Draw
-		vkCmdDrawIndexed(cmd, indexCount, 1, 0, 0, 0);
-
-		// Complete render pass.
-		vkCmdEndRenderPass(cmd);
-
-		// Upsample render pass
-		// Set framebuffer for this command buffer.
-		render_pass_begin_info.framebuffer = framebuffers[i];
-		// We will add draw commands in the same command buffer.
-		vkCmdBeginRenderPass(cmd, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
-
-		// Bind the graphics pipeline.
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, upsample_pipeline);
-
-		// Set viewport dynamically
-		VkViewport upsample_viewport = vkb::initializers::viewport(static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f);
-		vkCmdSetViewport(cmd, 0, 1, &upsample_viewport);
-
-		// Set scissor dynamically
-		VkRect2D upsample_scissor = vkb::initializers::rect2D(width, height, 0, 0);
-		vkCmdSetScissor(cmd, 0, 1, &upsample_scissor);
-
-		// Bind descriptor
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, upsample_pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
-
-		// Draw
-		vkCmdDraw(cmd, 6, 1, 0, 0);
-
-		// Draw user interface.
-		if (DRAW_UI)
-			draw_ui(cmd);
-
-		// Complete render pass.
-		vkCmdEndRenderPass(cmd);
-
-		// Complete the command buffer.
-		VK_CHECK(vkEndCommandBuffer(cmd));
+		recordCommandBuffer(i);
 	}
+}
+
+void color_chart::rebuild_command_buffers()
+{
+	for (uint32_t i = 0; i < draw_cmd_buffers.size(); ++i)
+	{
+		vkWaitForFences(get_device().get_handle(), 1, &wait_fences[i], VK_TRUE, UINT64_MAX);
+	}
+	vkResetCommandPool(get_device().get_handle(), cmd_pool, 0);
+	build_command_buffers();
 }
 
 void color_chart::render(float delta_time)
@@ -497,9 +449,11 @@ void color_chart::render(float delta_time)
 	{
 		return;
 	}
+	ApiVulkanSample::prepare_frame();
 	vkWaitForFences(get_device().get_handle(), 1, &wait_fences[current_buffer], VK_TRUE, UINT64_MAX);
 	vkResetFences(get_device().get_handle(), 1, &wait_fences[current_buffer]);
-	ApiVulkanSample::prepare_frame();
+	vkResetCommandBuffer(draw_cmd_buffers[current_buffer], 0);
+	recordCommandBuffer(current_buffer);
 	submit_info.commandBufferCount = 1;
 	submit_info.pCommandBuffers    = &draw_cmd_buffers[current_buffer];
 	VK_CHECK(vkQueueSubmit(queue, 1, &submit_info, wait_fences[current_buffer]));
@@ -569,6 +523,20 @@ void color_chart::createSampleFramebuffer(const VkImageView &textureImageView, V
 	framebufferInfo.layers                  = 1;
 
 	VK_CHECK(vkCreateFramebuffer(get_device().get_handle(), &framebufferInfo, nullptr, &framebuffer));
+}
+
+void color_chart::createSavedFramebuffer()
+{
+	VkFramebufferCreateInfo framebuffer_create_info = {};
+	framebuffer_create_info.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	framebuffer_create_info.pNext                   = NULL;
+	framebuffer_create_info.renderPass              = save_render_pass;
+	framebuffer_create_info.attachmentCount         = 1;
+	framebuffer_create_info.pAttachments            = &savedImageView;
+	framebuffer_create_info.width                   = SAVE_WIDTH;
+	framebuffer_create_info.height                  = SAVE_HEIGHT;
+	framebuffer_create_info.layers                  = 1;
+	VK_CHECK(vkCreateFramebuffer(device->get_handle(), &framebuffer_create_info, nullptr, &saved_framebuffer));
 }
 
 void color_chart::createGeometry()
@@ -743,15 +711,14 @@ void color_chart::createTextureSampler()
 
 void color_chart::createDescriptorPool()
 {
-	uint32_t                   cmd_buffer_count = static_cast<uint32_t>(draw_cmd_buffers.size());
-	VkDescriptorPoolSize       poolSize         = vkb::initializers::descriptor_pool_size(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, cmd_buffer_count);
-	VkDescriptorPoolCreateInfo poolInfo         = vkb::initializers::descriptor_pool_create_info(1, &poolSize, cmd_buffer_count);
+	uint32_t                   count    = static_cast<uint32_t>(cmd_buffer_count);
+	VkDescriptorPoolSize       poolSize = vkb::initializers::descriptor_pool_size(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, count);
+	VkDescriptorPoolCreateInfo poolInfo = vkb::initializers::descriptor_pool_create_info(1, &poolSize, count);
 	VK_CHECK(vkCreateDescriptorPool(get_device().get_handle(), &poolInfo, nullptr, &descriptor_pool));
 }
 
 void color_chart::createDescriptorSets()
 {
-	size_t                             cmd_buffer_count = draw_cmd_buffers.size();
 	std::vector<VkDescriptorSetLayout> layouts(cmd_buffer_count, descriptorSetLayout);
 	VkDescriptorSetAllocateInfo        allocInfo = vkb::initializers::descriptor_set_allocate_info(descriptor_pool, layouts.data(), static_cast<uint32_t>(layouts.size()));
 	descriptor_sets.resize(cmd_buffer_count);
@@ -765,9 +732,205 @@ void color_chart::createDescriptorSets()
 	}
 }
 
+void color_chart::createSaveCommandBuffer()
+{
+	VkCommandBufferAllocateInfo allocate_info = vkb::initializers::command_buffer_allocate_info(cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+	VK_CHECK(vkAllocateCommandBuffers(get_device().get_handle(), &allocate_info, &saveCommandBuffer));
+
+	VkFenceCreateInfo fenceInfo{};
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+	VK_CHECK(vkCreateFence(get_device().get_handle(), &fenceInfo, nullptr, &savedFence));
+}
+
+void color_chart::recordCommandBuffer(uint32_t index)
+{
+	VkCommandBufferBeginInfo command_buffer_begin_info = vkb::initializers::command_buffer_begin_info();
+
+	// Clear color and depth values.
+	VkClearValue clear_values[2];
+	clear_values[0].color        = {{0.0f, 0.0f, 0.0f, 1.0f}};
+	clear_values[1].depthStencil = {1.0f, 0};
+
+	// Begin the render pass.
+	VkRenderPassBeginInfo sample_render_pass_begin_info    = vkb::initializers::render_pass_begin_info();
+	sample_render_pass_begin_info.renderPass               = sample_render_pass;
+	sample_render_pass_begin_info.renderArea.offset.x      = 0;
+	sample_render_pass_begin_info.renderArea.offset.y      = 0;
+	sample_render_pass_begin_info.renderArea.extent.width  = SAMPLE_WIDTH;
+	sample_render_pass_begin_info.renderArea.extent.height = SAMPLE_HEIGHT;
+	sample_render_pass_begin_info.clearValueCount          = 1;
+	sample_render_pass_begin_info.pClearValues             = clear_values;
+
+	VkRenderPassBeginInfo render_pass_begin_info    = vkb::initializers::render_pass_begin_info();
+	render_pass_begin_info.renderPass               = render_pass;
+	render_pass_begin_info.renderArea.offset.x      = 0;
+	render_pass_begin_info.renderArea.offset.y      = 0;
+	render_pass_begin_info.renderArea.extent.width  = width;
+	render_pass_begin_info.renderArea.extent.height = height;
+	render_pass_begin_info.clearValueCount          = 2;
+	render_pass_begin_info.pClearValues             = clear_values;
+
+	VkRenderPassBeginInfo save_render_pass_begin_info    = vkb::initializers::render_pass_begin_info();
+	save_render_pass_begin_info.renderPass               = save_render_pass;
+	save_render_pass_begin_info.renderArea.offset.x      = 0;
+	save_render_pass_begin_info.renderArea.offset.y      = 0;
+	save_render_pass_begin_info.renderArea.extent.width  = SAVE_WIDTH;
+	save_render_pass_begin_info.renderArea.extent.height = SAVE_HEIGHT;
+	save_render_pass_begin_info.clearValueCount          = 1;
+	save_render_pass_begin_info.pClearValues             = clear_values;
+	save_render_pass_begin_info.framebuffer              = saved_framebuffer;
+
+	auto cmd = index == draw_cmd_buffers.size() ? saveCommandBuffer : draw_cmd_buffers[index];
+
+	// Begin command buffer.
+	vkBeginCommandBuffer(cmd, &command_buffer_begin_info);
+
+	// Set framebuffer for this command buffer.
+	sample_render_pass_begin_info.framebuffer = sample_framebuffers[index];
+
+	// We will add draw commands in the same command buffer.
+	vkCmdBeginRenderPass(cmd, &sample_render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+	// Bind the graphics pipeline.
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, sample_pipeline);
+
+	// Set viewport dynamically
+	VkViewport viewport = vkb::initializers::viewport(static_cast<float>(SAMPLE_WIDTH), static_cast<float>(SAMPLE_HEIGHT), 0.0f, 1.0f);
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+	// Set scissor dynamically
+	VkRect2D scissor = vkb::initializers::rect2D(SAMPLE_WIDTH, SAMPLE_HEIGHT, 0, 0);
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+	// Bind push constants
+	auto         currentTime = std::chrono::high_resolution_clock::now();
+	float        time        = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - startTime).count();
+	float        dt          = std::chrono::duration_cast<std::chrono::duration<float>>(currentTime - previousTime).count();
+	PushConstant pc{time, dt};
+	vkCmdPushConstants(cmd, sample_pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(PushConstant), &pc);
+	if (time > MAX_TIME)
+	{
+		startTime = currentTime;
+	}
+	previousTime = currentTime;
+
+	// Bind geometry
+	VkBuffer     vertexBuffers[] = {vertexBuffer};
+	VkDeviceSize offsets[]       = {0};
+	vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+	vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
+	// Draw
+	vkCmdDrawIndexed(cmd, indexCount, 1, 0, 0, 0);
+
+	// Complete render pass.
+	vkCmdEndRenderPass(cmd);
+
+	// Upsample render pass
+	// Set framebuffer for this command buffer.
+	if (index == draw_cmd_buffers.size())
+	{
+		// Save pass
+		vkCmdBeginRenderPass(cmd, &save_render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, save_pipeline);
+		VkViewport save_viewport = vkb::initializers::viewport(static_cast<float>(SAVE_WIDTH), static_cast<float>(SAVE_HEIGHT), 0.0f, 1.0f);
+		vkCmdSetViewport(cmd, 0, 1, &save_viewport);
+		VkRect2D save_scissor = vkb::initializers::rect2D(SAVE_WIDTH, SAVE_HEIGHT, 0, 0);
+		vkCmdSetScissor(cmd, 0, 1, &save_scissor);
+	}
+	else
+	{
+		// Presentation pass
+		render_pass_begin_info.framebuffer = framebuffers[index];
+		vkCmdBeginRenderPass(cmd, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, upsample_pipeline);
+		VkViewport upsample_viewport = vkb::initializers::viewport(static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f);
+		vkCmdSetViewport(cmd, 0, 1, &upsample_viewport);
+		VkRect2D upsample_scissor = vkb::initializers::rect2D(width, height, 0, 0);
+		vkCmdSetScissor(cmd, 0, 1, &upsample_scissor);
+	}
+
+	// Bind descriptor
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, upsample_pipeline_layout, 0, 1, &descriptor_sets[index], 0, nullptr);
+
+	// Draw
+	vkCmdDraw(cmd, 6, 1, 0, 0);
+
+	// Draw user interface.
+	if (DRAW_UI)
+		draw_ui(cmd);
+
+	// Complete render pass.
+	vkCmdEndRenderPass(cmd);
+
+	// Complete the command buffer.
+	VK_CHECK(vkEndCommandBuffer(cmd));
+}
+
 void color_chart::exportImage()
 {
-	LOGI("Exporting image.");
+	vkWaitForFences(get_device().get_handle(), 1, &savedFence, VK_TRUE, UINT64_MAX);
+	vkResetFences(get_device().get_handle(), 1, &savedFence);
+	LOGI("Exporting image...");
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers    = &saveCommandBuffer;
+	VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, savedFence));
+
+	vkWaitForFences(get_device().get_handle(), 1, &savedFence, VK_TRUE, UINT64_MAX);
+
+	// Get layout of the image (including row pitch)
+	VkImageSubresource  subResource{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
+	VkSubresourceLayout subResourceLayout;
+	vkGetImageSubresourceLayout(get_device().get_handle(), savedImage, &subResource, &subResourceLayout);
+
+	// Map image memory so we can start copying from it
+	uint8_t *raw_data;
+	vkMapMemory(get_device().get_handle(), savedImageMemory, 0, VK_WHOLE_SIZE, 0, (void **) &raw_data);
+	raw_data += subResourceLayout.offset;
+	/*
+	uint8_t *data    = raw_data;
+	bool     swizzle = false;
+	if (swizzle)
+	{
+	    for (size_t i = 0; i < SAVE_HEIGHT; ++i)
+	    {
+	        // Iterate over each pixel, swapping R and B components and writing the max value for alpha
+	        for (size_t j = 0; j < SAVE_WIDTH; ++j)
+	        {
+	            auto temp   = *(data + 2);
+	            *(data + 2) = *(data);
+	            *(data)     = temp;
+	            *(data + 3) = 255;
+
+	            // Get next pixel
+	            data += 4;
+	        }
+	    }
+	}
+	else
+	{
+	    for (size_t i = 0; i < SAVE_HEIGHT; ++i)
+	    {
+	        // Iterate over each pixel, writing the max value for alpha
+	        for (size_t j = 0; j < SAVE_WIDTH; ++j)
+	        {
+	            *(data + 3) = 255;
+
+	            // Get next pixel
+	            data += 4;
+	        }
+	    }
+	}
+	*/
+	vkb::fs::write_image(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS, SAVE_WIDTH * SAVE_COMPONENTS * SAVE_BYTES_PER_COMP);
+
+	LOGI("Image saved to disk {}{}.png", vkb::fs::path::relative_paths.find(vkb::fs::path::Type::Screenshots)->second, SAVED_IMAGE_FILENAME);
+
+	// Clean up resources
+	vkUnmapMemory(get_device().get_handle(), savedImageMemory);
 }
 
 std::unique_ptr<vkb::VulkanSample> create_color_chart()

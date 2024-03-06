@@ -38,42 +38,51 @@ class color_chart : public ApiVulkanSample
 	void prepare_pipelines();
 
 	// Override basic framework functionality
+	void create_command_pool() override;
 	void build_command_buffers() override;
+	void rebuild_command_buffers() override;
 	void render(float delta_time) override;
 	bool prepare(const vkb::ApplicationOptions &options) override;
 	void create_render_context() override;
 	void setup_render_pass() override;
-	void setup_framebuffer() override;
 	void input_event(const vkb::InputEvent &input_event) override;
 
   private:
 	// Sample specific data
-	std::vector<VkImage>         textureImages;
-	std::vector<VkDeviceMemory>  textureImageMemories;
-	std::vector<VkImageView>     textureImageViews;
-	VkImage                      savedImage;
-	VkDeviceMemory               savedImageMemory;
-	VkImageView                  savedImageView;
-	VkRenderPass                 sample_render_pass;
-	VkDescriptorSetLayout        descriptorSetLayout;
-	VkPipeline                   sample_pipeline{};
-	VkPipelineLayout             sample_pipeline_layout{};
-	VkPipeline                   upsample_pipeline{};
-	VkPipelineLayout             upsample_pipeline_layout{};
-	std::vector<VkFramebuffer>   sample_framebuffers;
-	VkFramebuffer                saved_framebuffer;
-	VkBuffer                     vertexBuffer;
-	VkDeviceMemory               vertexBufferMemory;
-	VkBuffer                     indexBuffer;
-	VkDeviceMemory               indexBufferMemory;
-	uint32_t                     indexCount;
-	VkSampler                    textureSampler;
-	std::vector<VkDescriptorSet> descriptor_sets;
+	std::vector<VkImage>                  textureImages;
+	std::vector<VkDeviceMemory>           textureImageMemories;
+	std::vector<VkImageView>              textureImageViews;
+	VkImage                               savedImage;
+	VkDeviceMemory                        savedImageMemory;
+	VkImageView                           savedImageView;
+	VkRenderPass                          sample_render_pass;
+	VkRenderPass                          save_render_pass;
+	VkDescriptorSetLayout                 descriptorSetLayout;
+	VkPipeline                            sample_pipeline{};
+	VkPipelineLayout                      sample_pipeline_layout{};
+	VkPipeline                            upsample_pipeline{};
+	VkPipelineLayout                      upsample_pipeline_layout{};
+	VkPipeline                            save_pipeline{};
+	std::vector<VkFramebuffer>            sample_framebuffers;
+	VkFramebuffer                         saved_framebuffer;
+	VkBuffer                              vertexBuffer;
+	VkDeviceMemory                        vertexBufferMemory;
+	VkBuffer                              indexBuffer;
+	VkDeviceMemory                        indexBufferMemory;
+	uint32_t                              indexCount;
+	VkSampler                             textureSampler;
+	std::vector<VkDescriptorSet>          descriptor_sets;
+	VkCommandBuffer                       saveCommandBuffer;
+	VkFence                               savedFence;
+	size_t                                cmd_buffer_count;
+	std::chrono::steady_clock::time_point startTime;
+	std::chrono::steady_clock::time_point previousTime;
 
 	void            createDescriptorSetLayout();
 	void            createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
 	void            createTextureImageView(const VkImage &textureImage, VkImageView &textureImageView);
 	void            createSampleFramebuffer(const VkImageView &textureImageView, VkFramebuffer &framebuffer);
+	void            createSavedFramebuffer();
 	void            createGeometry();
 	void            createVertexBuffer(const std::vector<ColoredVertex2D> &vertices);
 	void            createIndexBuffer(const std::vector<uint16_t> &indices);
@@ -84,6 +93,8 @@ class color_chart : public ApiVulkanSample
 	void            createTextureSampler();
 	void            createDescriptorPool();
 	void            createDescriptorSets();
+	void            createSaveCommandBuffer();
+	void            recordCommandBuffer(uint32_t index);
 	void            exportImage();
 };
 

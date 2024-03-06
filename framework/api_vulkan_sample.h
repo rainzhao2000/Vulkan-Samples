@@ -277,7 +277,7 @@ class ApiVulkanSample : public vkb::VulkanSample
 	/**
 	 * @brief Rebuild the command buffers by first resetting the corresponding command pool and then building the command buffers.
 	 */
-	void rebuild_command_buffers();
+	virtual void rebuild_command_buffers();
 
 	/**
 	 * @brief Creates the fences for rendering
@@ -287,7 +287,7 @@ class ApiVulkanSample : public vkb::VulkanSample
 	/**
 	 * @brief Creates a new (graphics) command pool object storing command buffers
 	 */
-	void create_command_pool();
+	virtual void create_command_pool();
 
 	/**
 	 * @brief Setup default depth and stencil views
