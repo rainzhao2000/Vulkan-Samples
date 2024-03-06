@@ -23,12 +23,11 @@ const uint32_t ROW_COUNT            = 4;
 const uint32_t PADDING              = 1;
 const uint32_t SAMPLE_WIDTH         = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING;
 const uint32_t SAMPLE_HEIGHT        = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
-const uint32_t SAVE_WIDTH           = 2976;        // has to be multiple of 32 for stbi_write_png to be properly aligned, idk why
-const uint32_t SAVE_HEIGHT          = 1984;
-const VkFormat SAMPLE_FORMAT        = VK_FORMAT_R8G8B8A8_UNORM;
-const VkFormat SAVE_FORMAT          = VK_FORMAT_R8G8B8A8_UNORM;
+const uint32_t SAVE_WIDTH           = 2880;        // has to be multiple of 32 for stbi_write_png to be properly aligned, idk why
+const uint32_t SAVE_HEIGHT          = 1920;
+const VkFormat SAMPLE_FORMAT        = VK_FORMAT_R32G32B32A32_SFLOAT;
+const VkFormat SAVE_FORMAT          = VK_FORMAT_R32G32B32A32_SFLOAT;
 const uint32_t SAVE_COMPONENTS      = 4;
-const uint32_t SAVE_BYTES_PER_COMP  = 1;
 const char    *SAVED_IMAGE_FILENAME = "color_chart";
 const bool     DRAW_UI              = false;
 const float    MAX_TIME             = 5.0f;        // seconds
@@ -887,45 +886,11 @@ void color_chart::exportImage()
 	vkGetImageSubresourceLayout(get_device().get_handle(), savedImage, &subResource, &subResourceLayout);
 
 	// Map image memory so we can start copying from it
-	uint8_t *raw_data;
+	float *raw_data;
 	vkMapMemory(get_device().get_handle(), savedImageMemory, 0, VK_WHOLE_SIZE, 0, (void **) &raw_data);
 	raw_data += subResourceLayout.offset;
-	/*
-	uint8_t *data    = raw_data;
-	bool     swizzle = false;
-	if (swizzle)
-	{
-	    for (size_t i = 0; i < SAVE_HEIGHT; ++i)
-	    {
-	        // Iterate over each pixel, swapping R and B components and writing the max value for alpha
-	        for (size_t j = 0; j < SAVE_WIDTH; ++j)
-	        {
-	            auto temp   = *(data + 2);
-	            *(data + 2) = *(data);
-	            *(data)     = temp;
-	            *(data + 3) = 255;
 
-	            // Get next pixel
-	            data += 4;
-	        }
-	    }
-	}
-	else
-	{
-	    for (size_t i = 0; i < SAVE_HEIGHT; ++i)
-	    {
-	        // Iterate over each pixel, writing the max value for alpha
-	        for (size_t j = 0; j < SAVE_WIDTH; ++j)
-	        {
-	            *(data + 3) = 255;
-
-	            // Get next pixel
-	            data += 4;
-	        }
-	    }
-	}
-	*/
-	vkb::fs::write_image(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS, SAVE_WIDTH * SAVE_COMPONENTS * SAVE_BYTES_PER_COMP);
+	vkb::fs::write_image_hdr(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS);
 
 	LOGI("Image saved to disk {}{}.png", vkb::fs::path::relative_paths.find(vkb::fs::path::Type::Screenshots)->second, SAVED_IMAGE_FILENAME);
 

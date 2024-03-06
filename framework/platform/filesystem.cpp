@@ -209,5 +209,10 @@ void write_image(const uint8_t *data, const std::string &filename, const uint32_
 	stbi_write_png((path::get(path::Type::Screenshots) + filename + ".png").c_str(), width, height, components, data, row_stride);
 }
 
+void write_image_hdr(const float *data, const std::string &filename, const uint32_t width, const uint32_t height, const uint32_t components)
+{
+	stbi_write_hdr((path::get(path::Type::Screenshots) + filename + ".hdr").c_str(), width, height, components, data);
+}
+
 }        // namespace fs
 }        // namespace vkb
