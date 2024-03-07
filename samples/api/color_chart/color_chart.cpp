@@ -17,16 +17,16 @@
 
 #include "color_chart.h"
 
-const uint32_t CUBE_SIZE            = 24;
-const uint32_t COLUMN_COUNT         = 6;
+const uint32_t CUBE_SIZE            = 32;
+const uint32_t COLUMN_COUNT         = 8;
 const uint32_t ROW_COUNT            = 4;
 const uint32_t PADDING              = 1;
 const uint32_t SAMPLE_WIDTH         = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING;
 const uint32_t SAMPLE_HEIGHT        = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
 const uint32_t SAVE_WIDTH           = 2880;        // has to be multiple of 32 for stbi_write_png to be properly aligned, idk why
 const uint32_t SAVE_HEIGHT          = 1920;
-const VkFormat SAMPLE_FORMAT        = VK_FORMAT_R8G8B8A8_UNORM;        // VK_FORMAT_R32G32B32A32_SFLOAT;
-const VkFormat SAVE_FORMAT          = VK_FORMAT_R8G8B8A8_UNORM;        // VK_FORMAT_R32G32B32A32_SFLOAT;
+const VkFormat SAMPLE_FORMAT        = VK_FORMAT_R32G32B32A32_SFLOAT;        // VK_FORMAT_R8G8B8A8_UNORM;
+const VkFormat SAVE_FORMAT          = VK_FORMAT_R32G32B32A32_SFLOAT;        // VK_FORMAT_R8G8B8A8_UNORM;
 const uint32_t SAVE_COMPONENTS      = 4;
 const char    *SAVED_IMAGE_FILENAME = "color_chart";
 const bool     DRAW_UI              = false;
@@ -50,11 +50,11 @@ std::array<VkVertexInputAttributeDescription, 2> ColoredVertex2D::getAttributeDe
 	    vkb::initializers::vertex_input_attribute_description(0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(ColoredVertex2D, color))};
 }
 
-color_chart::color_chart()
+ColorChart::ColorChart()
 {
 }
 
-color_chart::~color_chart()
+ColorChart::~ColorChart()
 {
 	if (device)
 	{
@@ -109,7 +109,7 @@ color_chart::~color_chart()
 	}
 }
 
-bool color_chart::prepare(const vkb::ApplicationOptions &options)
+bool ColorChart::prepare(const vkb::ApplicationOptions &options)
 {
 	// Add support for wide color gamut
 	add_instance_extension(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
@@ -164,7 +164,7 @@ bool color_chart::prepare(const vkb::ApplicationOptions &options)
 	return true;
 }
 
-void color_chart::create_render_context()
+void ColorChart::create_render_context()
 {
 	// Use wide color gamut hdr when possible
 	auto surface_priority_list = std::vector<VkSurfaceFormatKHR>{{VK_FORMAT_A2B10G10R10_UNORM_PACK32, VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT},
@@ -174,7 +174,7 @@ void color_chart::create_render_context()
 	VulkanSample::create_render_context(surface_priority_list);
 }
 
-void color_chart::setup_render_pass()
+void ColorChart::setup_render_pass()
 {
 	VkAttachmentDescription sample_attachment = {};
 	// Color attachment
@@ -284,7 +284,7 @@ void color_chart::setup_render_pass()
 	VK_CHECK(vkCreateRenderPass(get_device().get_handle(), &save_render_pass_create_info, nullptr, &save_render_pass));
 }
 
-void color_chart::input_event(const vkb::InputEvent &input_event)
+void ColorChart::input_event(const vkb::InputEvent &input_event)
 {
 	ApiVulkanSample::input_event(input_event);
 	if (input_event.get_source() == vkb::EventSource::Keyboard)
@@ -305,7 +305,7 @@ void color_chart::input_event(const vkb::InputEvent &input_event)
 	}
 }
 
-void color_chart::prepare_pipelines()
+void ColorChart::prepare_pipelines()
 {
 	// Sample pipeline
 	VkPushConstantRange range = {};
@@ -415,7 +415,7 @@ void color_chart::prepare_pipelines()
 	VK_CHECK(vkCreateGraphicsPipelines(get_device().get_handle(), VK_NULL_HANDLE, 1, &save_pipeline_create_info, nullptr, &save_pipeline));
 }
 
-void color_chart::create_command_pool()
+void ColorChart::create_command_pool()
 {
 	VkCommandPoolCreateInfo command_pool_info = {};
 	command_pool_info.sType                   = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -424,7 +424,7 @@ void color_chart::create_command_pool()
 	VK_CHECK(vkCreateCommandPool(get_device().get_handle(), &command_pool_info, nullptr, &cmd_pool));
 }
 
-void color_chart::build_command_buffers()
+void ColorChart::build_command_buffers()
 {
 	for (int32_t i = 0; i < cmd_buffer_count; ++i)
 	{
@@ -432,7 +432,7 @@ void color_chart::build_command_buffers()
 	}
 }
 
-void color_chart::rebuild_command_buffers()
+void ColorChart::rebuild_command_buffers()
 {
 	for (uint32_t i = 0; i < draw_cmd_buffers.size(); ++i)
 	{
@@ -442,7 +442,7 @@ void color_chart::rebuild_command_buffers()
 	build_command_buffers();
 }
 
-void color_chart::render(float delta_time)
+void ColorChart::render(float delta_time)
 {
 	if (!prepared)
 	{
@@ -459,14 +459,14 @@ void color_chart::render(float delta_time)
 	ApiVulkanSample::submit_frame();
 }
 
-void color_chart::createDescriptorSetLayout()
+void ColorChart::createDescriptorSetLayout()
 {
 	VkDescriptorSetLayoutBinding    samplerLayoutBinding = vkb::initializers::descriptor_set_layout_binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 1);
 	VkDescriptorSetLayoutCreateInfo layoutInfo           = vkb::initializers::descriptor_set_layout_create_info(&samplerLayoutBinding, 1);
 	VK_CHECK(vkCreateDescriptorSetLayout(get_device().get_handle(), &layoutInfo, nullptr, &descriptorSetLayout));
 }
 
-void color_chart::createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory)
+void ColorChart::createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory)
 {
 	VkImageCreateInfo imageInfo = vkb::initializers::image_create_info();
 	imageInfo.imageType         = VK_IMAGE_TYPE_2D;
@@ -496,7 +496,7 @@ void color_chart::createImage(uint32_t width, uint32_t height, VkFormat format, 
 	vkBindImageMemory(get_device().get_handle(), image, imageMemory, 0);
 }
 
-void color_chart::createTextureImageView(const VkImage &textureImage, VkImageView &textureImageView)
+void ColorChart::createTextureImageView(const VkImage &textureImage, VkImageView &textureImageView)
 {
 	VkImageViewCreateInfo viewInfo           = vkb::initializers::image_view_create_info();
 	viewInfo.image                           = textureImage;
@@ -511,7 +511,7 @@ void color_chart::createTextureImageView(const VkImage &textureImage, VkImageVie
 	VK_CHECK(vkCreateImageView(get_device().get_handle(), &viewInfo, nullptr, &textureImageView));
 }
 
-void color_chart::createSampleFramebuffer(const VkImageView &textureImageView, VkFramebuffer &framebuffer)
+void ColorChart::createSampleFramebuffer(const VkImageView &textureImageView, VkFramebuffer &framebuffer)
 {
 	VkFramebufferCreateInfo framebufferInfo = vkb::initializers::framebuffer_create_info();
 	framebufferInfo.renderPass              = sample_render_pass;
@@ -524,7 +524,7 @@ void color_chart::createSampleFramebuffer(const VkImageView &textureImageView, V
 	VK_CHECK(vkCreateFramebuffer(get_device().get_handle(), &framebufferInfo, nullptr, &framebuffer));
 }
 
-void color_chart::createSavedFramebuffer()
+void ColorChart::createSavedFramebuffer()
 {
 	VkFramebufferCreateInfo framebuffer_create_info = {};
 	framebuffer_create_info.sType                   = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -538,7 +538,7 @@ void color_chart::createSavedFramebuffer()
 	VK_CHECK(vkCreateFramebuffer(device->get_handle(), &framebuffer_create_info, nullptr, &saved_framebuffer));
 }
 
-void color_chart::createGeometry()
+void ColorChart::createGeometry()
 {
 	std::vector<ColoredVertex2D> vertices;
 	std::vector<uint16_t>        indices;
@@ -589,7 +589,7 @@ void color_chart::createGeometry()
 	createIndexBuffer(indices);
 }
 
-void color_chart::createVertexBuffer(const std::vector<ColoredVertex2D> &vertices)
+void ColorChart::createVertexBuffer(const std::vector<ColoredVertex2D> &vertices)
 {
 	VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
@@ -610,7 +610,7 @@ void color_chart::createVertexBuffer(const std::vector<ColoredVertex2D> &vertice
 	vkFreeMemory(get_device().get_handle(), stagingBufferMemory, nullptr);
 }
 
-void color_chart::createIndexBuffer(const std::vector<uint16_t> &indices)
+void ColorChart::createIndexBuffer(const std::vector<uint16_t> &indices)
 {
 	VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 	createBuffer(bufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, indexBuffer, indexBufferMemory);
@@ -621,7 +621,7 @@ void color_chart::createIndexBuffer(const std::vector<uint16_t> &indices)
 	vkUnmapMemory(get_device().get_handle(), indexBufferMemory);
 }
 
-void color_chart::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
+void ColorChart::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
 {
 	VkBufferCreateInfo bufferInfo = vkb::initializers::buffer_create_info(usage, size);
 	bufferInfo.sharingMode        = VK_SHARING_MODE_EXCLUSIVE;
@@ -638,7 +638,7 @@ void color_chart::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMe
 	vkBindBufferMemory(get_device().get_handle(), buffer, bufferMemory, 0);
 }
 
-void color_chart::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+void ColorChart::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
 {
 	VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -649,7 +649,7 @@ void color_chart::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSiz
 	endSingleTimeCommands(commandBuffer);
 }
 
-VkCommandBuffer color_chart::beginSingleTimeCommands()
+VkCommandBuffer ColorChart::beginSingleTimeCommands()
 {
 	VkCommandBufferAllocateInfo allocInfo{};
 	allocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -669,7 +669,7 @@ VkCommandBuffer color_chart::beginSingleTimeCommands()
 	return commandBuffer;
 }
 
-void color_chart::endSingleTimeCommands(VkCommandBuffer commandBuffer)
+void ColorChart::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 {
 	vkEndCommandBuffer(commandBuffer);
 
@@ -684,7 +684,7 @@ void color_chart::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 	vkFreeCommandBuffers(get_device().get_handle(), cmd_pool, 1, &commandBuffer);
 }
 
-void color_chart::createTextureSampler()
+void ColorChart::createTextureSampler()
 {
 	VkPhysicalDeviceProperties properties = get_device().get_gpu().get_properties();
 
@@ -708,7 +708,7 @@ void color_chart::createTextureSampler()
 	VK_CHECK(vkCreateSampler(get_device().get_handle(), &samplerInfo, nullptr, &textureSampler));
 }
 
-void color_chart::createDescriptorPool()
+void ColorChart::createDescriptorPool()
 {
 	uint32_t                   count    = static_cast<uint32_t>(cmd_buffer_count);
 	VkDescriptorPoolSize       poolSize = vkb::initializers::descriptor_pool_size(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, count);
@@ -716,7 +716,7 @@ void color_chart::createDescriptorPool()
 	VK_CHECK(vkCreateDescriptorPool(get_device().get_handle(), &poolInfo, nullptr, &descriptor_pool));
 }
 
-void color_chart::createDescriptorSets()
+void ColorChart::createDescriptorSets()
 {
 	std::vector<VkDescriptorSetLayout> layouts(cmd_buffer_count, descriptorSetLayout);
 	VkDescriptorSetAllocateInfo        allocInfo = vkb::initializers::descriptor_set_allocate_info(descriptor_pool, layouts.data(), static_cast<uint32_t>(layouts.size()));
@@ -731,7 +731,7 @@ void color_chart::createDescriptorSets()
 	}
 }
 
-void color_chart::createSaveCommandBuffer()
+void ColorChart::createSaveCommandBuffer()
 {
 	VkCommandBufferAllocateInfo allocate_info = vkb::initializers::command_buffer_allocate_info(cmd_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
 	VK_CHECK(vkAllocateCommandBuffers(get_device().get_handle(), &allocate_info, &saveCommandBuffer));
@@ -742,7 +742,7 @@ void color_chart::createSaveCommandBuffer()
 	VK_CHECK(vkCreateFence(get_device().get_handle(), &fenceInfo, nullptr, &savedFence));
 }
 
-void color_chart::recordCommandBuffer(uint32_t index)
+void ColorChart::recordCommandBuffer(uint32_t index)
 {
 	VkCommandBufferBeginInfo command_buffer_begin_info = vkb::initializers::command_buffer_begin_info();
 
@@ -867,7 +867,7 @@ void color_chart::recordCommandBuffer(uint32_t index)
 	VK_CHECK(vkEndCommandBuffer(cmd));
 }
 
-void color_chart::exportImage()
+void ColorChart::exportImage()
 {
 	vkWaitForFences(get_device().get_handle(), 1, &savedFence, VK_TRUE, UINT64_MAX);
 	vkResetFences(get_device().get_handle(), 1, &savedFence);
@@ -886,12 +886,12 @@ void color_chart::exportImage()
 	vkGetImageSubresourceLayout(get_device().get_handle(), savedImage, &subResource, &subResourceLayout);
 
 	// Map image memory so we can start copying from it
-	uint8_t *raw_data;
+	float *raw_data;
 	vkMapMemory(get_device().get_handle(), savedImageMemory, 0, VK_WHOLE_SIZE, 0, (void **) &raw_data);
 	raw_data += subResourceLayout.offset;
 
-	// vkb::fs::write_image_hdr(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS);
-	vkb::fs::write_image(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS, SAVE_WIDTH * SAVE_COMPONENTS);
+	vkb::fs::write_image_hdr(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS);
+	//vkb::fs::write_image(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS, SAVE_WIDTH * SAVE_COMPONENTS);
 
 	LOGI("Image saved to disk {}{}.png", vkb::fs::path::relative_paths.find(vkb::fs::path::Type::Screenshots)->second, SAVED_IMAGE_FILENAME);
 
@@ -901,5 +901,5 @@ void color_chart::exportImage()
 
 std::unique_ptr<vkb::VulkanSample> create_color_chart()
 {
-	return std::make_unique<color_chart>();
+	return std::make_unique<ColorChart>();
 }

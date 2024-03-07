@@ -28,11 +28,11 @@ struct ColoredVertex2D
 	static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions();
 };
 
-class color_chart : public ApiVulkanSample
+class ColorChart : public ApiVulkanSample
 {
   public:
-	color_chart();
-	virtual ~color_chart();
+	ColorChart();
+	virtual ~ColorChart();
 
 	// Create pipeline
 	void prepare_pipelines();

@@ -22,9 +22,11 @@ get_filename_component(CATEGORY_NAME ${PARENT_DIR} NAME)
 add_sample(
     ID ${FOLDER_NAME}
     CATEGORY ${CATEGORY_NAME}
-    AUTHOR "<<Contributor>>"
-    NAME "plot"
-    DESCRIPTION "Sample description"
+    AUTHOR "rainzhao2000"
+    NAME "Plot"
+    DESCRIPTION "3D plotting"
     SHADER_FILES_GLSL
-        "triangle.vert"
-        "triangle.frag")
+        "compute_nbody/particle.vert"
+        "compute_nbody/particle.frag"
+        "plot/particle_calculate.comp"
+        "plot/particle.comp")
