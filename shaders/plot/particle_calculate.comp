@@ -46,44 +46,40 @@ shared vec4 sharedData[SHARED_DATA_SIZE];
 
 #define TIME_FACTOR 0.05
 
+float rbf(float u, float s, float x, int p) {
+	float ans = 1.0;
+	for (int i = 0; i < p; ++i) {
+		ans *= (x - u) / s;
+	}
+	return exp(-ans);
+}
+
+float rescale(float x) {
+	return (exp(x) - 1.0) / 11.2;
+}
+
+float r(float x) {
+	return rescale(2.5 * rbf(630.0, 60.0, x, 4));
+}
+
+float g(float x) {
+	return rescale(2.5 * rbf(530.0, 60.0, x, 4) + 0.7 * rbf(380.0, 30.0, x, 2));
+}
+
+float b(float x) {
+	return rescale(2.5 * rbf(420.0, 70.0, x, 4));
+}
+
 void main() 
 {
 	// Current SSBO index
 	uint index = gl_GlobalInvocationID.x;
 	if (index >= ubo.particleCount) 
-		return;	
-
-	vec4 position = particles[index].pos;
-	vec4 velocity = particles[index].vel;
-	vec4 acceleration = vec4(0.0);
-
-	for (int i = 0; i < ubo.particleCount; i += SHARED_DATA_SIZE)
-	{
-		if (i + gl_LocalInvocationID.x < ubo.particleCount)
-		{
-			sharedData[gl_LocalInvocationID.x] = particles[i + gl_LocalInvocationID.x].pos;
-		}
-		else
-		{
-			sharedData[gl_LocalInvocationID.x] = vec4(0.0);
-		}
-
-		barrier();
-
-		for (int j = 0; j < gl_WorkGroupSize.x; j++)
-		{
-			vec4 other = sharedData[j];
-			vec3 len = other.xyz - position.xyz;
-			acceleration.xyz += GRAVITY * len * other.w / pow(dot(len, len) + SOFTEN, POWER);
-		}
-
-		barrier();
+		return;
+	vec4 vel = particles[index].vel; // vel is initial positions
+	if (index < 60) {
+		particles[index].pos = vel;
+	} else {
+		particles[index].pos = vec4(r(vel.x), g(vel.x), b(vel.x), vel.w);
 	}
-
-	particles[index].vel.xyz += ubo.deltaT * TIME_FACTOR * acceleration.xyz;
-
-	// Gradient texture position
-	particles[index].vel.w += 0.1 * TIME_FACTOR * ubo.deltaT;
-	if (particles[index].vel.w > 1.0)
-		particles[index].vel.w -= 1.0;
 }

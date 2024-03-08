@@ -26,9 +26,9 @@ Plot::Plot()
 
 	// Note: Using reversed depth-buffer for increased precision, so Z-Near and Z-Far are flipped
 	camera.set_perspective(60.0f, static_cast<float>(width) / static_cast<float>(height), 512.0f, 0.1f);
-	camera.set_rotation(glm::vec3(-26.0f, 75.0f, 0.0f));
-	camera.set_translation(glm::vec3(0.0f, 0.0f, -14.0f));
-	camera.translation_speed = 2.5f;
+	camera.set_rotation(glm::vec3(-26.0f, 75.0f, 180.0f));
+	camera.set_translation(glm::vec3(0.0f, 0.0f, -2.0f));
+	camera.translation_speed = 1.0f;
 }
 
 Plot::~Plot()
@@ -64,6 +64,14 @@ void Plot::request_gpu_features(vkb::PhysicalDevice &gpu)
 	{
 		gpu.get_mutable_requested_features().samplerAnisotropy = VK_TRUE;
 	}
+}
+
+void Plot::create_render_context()
+{
+	auto surface_priority_list = std::vector<VkSurfaceFormatKHR>{{VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
+	                                                             {VK_FORMAT_R8G8B8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR}};
+
+	VulkanSample::create_render_context(surface_priority_list);
 }
 
 void Plot::load_assets()
@@ -255,61 +263,21 @@ void Plot::build_compute_command_buffer()
 // Setup and fill the compute shader storage buffers containing the particles
 void Plot::prepare_storage_buffers()
 {
-#if 0
-	std::vector<glm::vec3> attractors = {
-		glm::vec3(2.5f, 1.5f, 0.0f),
-		glm::vec3(-2.5f, -1.5f, 0.0f),
-	};
-#else
-	std::vector<glm::vec3> attractors = {
-	    glm::vec3(5.0f, 0.0f, 0.0f),
-	    glm::vec3(-5.0f, 0.0f, 0.0f),
-	    glm::vec3(0.0f, 0.0f, 5.0f),
-	    glm::vec3(0.0f, 0.0f, -5.0f),
-	    glm::vec3(0.0f, 4.0f, 0.0f),
-	    glm::vec3(0.0f, -8.0f, 0.0f),
-	};
-#endif
-
-	num_particles = static_cast<uint32_t>(attractors.size()) * PARTICLES_PER_ATTRACTOR;
-
-	// Initial particle positions
+	float num_axis_particles = 20;
+	float num_plot_particles = 1000;
+	num_particles = 3 * num_axis_particles + num_plot_particles;
 	std::vector<Particle> particle_buffer(num_particles);
-
-	std::default_random_engine      rnd_engine(lock_simulation_speed ? 0 : static_cast<unsigned>(time(nullptr)));
-	std::normal_distribution<float> rnd_distribution(0.0f, 1.0f);
-
-	for (uint32_t i = 0; i < static_cast<uint32_t>(attractors.size()); i++)
+	for (float i = 0.0f; i < num_axis_particles; ++i)
 	{
-		for (uint32_t j = 0; j < PARTICLES_PER_ATTRACTOR; j++)
-		{
-			Particle &particle = particle_buffer[i * PARTICLES_PER_ATTRACTOR + j];
-
-			// First particle in group as heavy center of gravity
-			if (j == 0)
-			{
-				particle.pos = glm::vec4(attractors[i] * 1.5f, 90000.0f);
-				particle.vel = glm::vec4(glm::vec4(0.0f));
-			}
-			else
-			{
-				// Position
-				glm::vec3 position(attractors[i] + glm::vec3(rnd_distribution(rnd_engine), rnd_distribution(rnd_engine), rnd_distribution(rnd_engine)) * 0.75f);
-				float     len = glm::length(glm::normalize(position - attractors[i]));
-				position.y *= 2.0f - (len * len);
-
-				// Velocity
-				glm::vec3 angular  = glm::vec3(0.5f, 1.5f, 0.5f) * (((i % 2) == 0) ? 1.0f : -1.0f);
-				glm::vec3 velocity = glm::cross((position - attractors[i]), angular) + glm::vec3(rnd_distribution(rnd_engine), rnd_distribution(rnd_engine), rnd_distribution(rnd_engine) * 0.025f);
-
-				float mass   = (rnd_distribution(rnd_engine) * 0.5f + 0.5f) * 75.0f;
-				particle.pos = glm::vec4(position, mass);
-				particle.vel = glm::vec4(velocity, 0.0f);
-			}
-
-			// Color gradient offset
-			particle.vel.w = static_cast<float>(i) * 1.0f / static_cast<uint32_t>(attractors.size());
-		}
+		particle_buffer[i*3].vel = glm::vec4(i / ((float) num_axis_particles - 1.0f), 0.0f, 0.0f, 4.0f);
+		particle_buffer[i*3+1].vel = glm::vec4(0.0f, i / ((float) num_axis_particles - 1.0f), 0.0f, 4.0f);
+		particle_buffer[i*3+2].vel = glm::vec4(0.0f, 0.0f, i / ((float) num_axis_particles - 1.0f), 4.0f);
+	}
+	for (float i = 3 * num_axis_particles; i < num_particles; ++i)
+	{
+		// using vel for initial position
+		float unit             = i / ((float) num_particles - 1.0f);
+		particle_buffer[i].vel = glm::vec4(unit * 450.0f + 300.0f, unit, 0.0f, 8.0f);
 	}
 
 	compute.ubo.particle_count = num_particles;
@@ -449,9 +417,9 @@ void Plot::prepare_pipelines()
 
 	VkPipelineDepthStencilStateCreateInfo depth_stencil_state =
 	    vkb::initializers::pipeline_depth_stencil_state_create_info(
-	        VK_FALSE,
-	        VK_FALSE,
-	        VK_COMPARE_OP_ALWAYS);
+	        VK_TRUE,
+	        VK_TRUE,
+	        VK_COMPARE_OP_GREATER);
 
 	VkPipelineViewportStateCreateInfo viewport_state =
 	    vkb::initializers::pipeline_viewport_state_create_info(1, 1, 0);
@@ -474,8 +442,8 @@ void Plot::prepare_pipelines()
 	// Load shaders
 	std::array<VkPipelineShaderStageCreateInfo, 2> shader_stages;
 
-	shader_stages[0] = load_shader("compute_nbody/particle.vert", VK_SHADER_STAGE_VERTEX_BIT);
-	shader_stages[1] = load_shader("compute_nbody/particle.frag", VK_SHADER_STAGE_FRAGMENT_BIT);
+	shader_stages[0] = load_shader("plot/particle.vert", VK_SHADER_STAGE_VERTEX_BIT);
+	shader_stages[1] = load_shader("plot/particle.frag", VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	// Vertex bindings and attributes
 	const std::vector<VkVertexInputBindingDescription> vertex_input_bindings = {
@@ -510,7 +478,7 @@ void Plot::prepare_pipelines()
 
 	// Additive blending
 	blend_attachment_state.colorWriteMask      = 0xF;
-	blend_attachment_state.blendEnable         = VK_TRUE;
+	blend_attachment_state.blendEnable         = VK_FALSE;
 	blend_attachment_state.colorBlendOp        = VK_BLEND_OP_ADD;
 	blend_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
 	blend_attachment_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;

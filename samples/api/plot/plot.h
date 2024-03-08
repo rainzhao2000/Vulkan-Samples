@@ -93,6 +93,7 @@ class Plot : public ApiVulkanSample
 	Plot();
 	~Plot();
 	virtual void request_gpu_features(vkb::PhysicalDevice &gpu) override;
+	void         create_render_context() override;
 	void         load_assets();
 	void         build_command_buffers() override;
 	void         build_compute_command_buffer();

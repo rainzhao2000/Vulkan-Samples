@@ -26,7 +26,7 @@ add_sample(
     NAME "Plot"
     DESCRIPTION "3D plotting"
     SHADER_FILES_GLSL
-        "compute_nbody/particle.vert"
-        "compute_nbody/particle.frag"
+        "plot/particle.vert"
+        "plot/particle.frag"
         "plot/particle_calculate.comp"
         "plot/particle.comp")
