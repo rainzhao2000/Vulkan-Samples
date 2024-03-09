@@ -79,7 +79,8 @@ class Plot : public ApiVulkanSample
 		struct ComputeUBO
 		{                              // Compute shader uniform block object
 			float   delta_time;        //		Frame delta time
-			int32_t particle_count;
+			uint32_t particle_count;
+			uint32_t axes_particle_count;
 		} ubo;
 	} compute;
 
@@ -87,7 +88,7 @@ class Plot : public ApiVulkanSample
 	struct Particle
 	{
 		glm::vec4 pos;        // xyz = position, w = mass
-		glm::vec4 vel;        // xyz = velocity, w = gradient texture position
+		glm::vec4 pos0;        // xyz = velocity, w = gradient texture position
 	};
 
 	Plot();

@@ -17,7 +17,7 @@
  */
 
 layout (location = 0) in vec4 inPos;
-layout (location = 1) in vec4 inVel;
+layout (location = 1) in vec4 inPos0;
 
 //layout (location = 0) out float outGradientPos;
 layout (location = 0) out vec3 outPos;
@@ -45,6 +45,6 @@ void main ()
 	
 	gl_Position = ubo.projection * eyePos;
 
-	//outGradientPos = inVel.w;
+	//outGradientPos = inPos0.w;
 	outPos = inPos.xyz;
 }

@@ -172,6 +172,11 @@ void Plot::build_command_buffers()
 	}
 }
 
+uint32_t ceil_divide(uint32_t x, uint32_t y)
+{
+	return x == 0 ? 0 : 1 + ((x - 1) / y);
+}
+
 void Plot::build_compute_command_buffer()
 {
 	VkCommandBufferBeginInfo command_buffer_begin_info = vkb::initializers::command_buffer_begin_info();
@@ -207,7 +212,7 @@ void Plot::build_compute_command_buffer()
 	// -------------------------------------------------------------------------------------------------------
 	vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, compute.pipeline_calculate);
 	vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, compute.pipeline_layout, 0, 1, &compute.descriptor_set, 0, 0);
-	vkCmdDispatch(compute.command_buffer, num_particles / work_group_size, 1, 1);
+	vkCmdDispatch(compute.command_buffer, ceil_divide(num_particles, work_group_size), 1, 1);
 
 	// Add memory barrier to ensure that the computer shader has finished writing to the buffer
 	VkBufferMemoryBarrier memory_barrier = vkb::initializers::buffer_memory_barrier();
@@ -230,7 +235,7 @@ void Plot::build_compute_command_buffer()
 	// Second pass: Integrate particles
 	// -------------------------------------------------------------------------------------------------------
 	vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, compute.pipeline_integrate);
-	vkCmdDispatch(compute.command_buffer, num_particles / work_group_size, 1, 1);
+	vkCmdDispatch(compute.command_buffer, ceil_divide(num_particles, work_group_size), 1, 1);
 
 	// Release
 	if (graphics.queue_family_index != compute.queue_family_index)
@@ -263,24 +268,29 @@ void Plot::build_compute_command_buffer()
 // Setup and fill the compute shader storage buffers containing the particles
 void Plot::prepare_storage_buffers()
 {
-	float num_axis_particles = 20;
-	float num_plot_particles = 1000;
-	num_particles = 3 * num_axis_particles + num_plot_particles;
+	uint32_t num_axis_particles = 10;
+	uint32_t num_axes_particles = num_axis_particles * num_axis_particles * num_axis_particles;
+	uint32_t num_plot_particles = 1000;
+	num_particles            = num_axes_particles + num_plot_particles;
 	std::vector<Particle> particle_buffer(num_particles);
 	for (float i = 0.0f; i < num_axis_particles; ++i)
 	{
-		particle_buffer[i*3].vel = glm::vec4(i / ((float) num_axis_particles - 1.0f), 0.0f, 0.0f, 4.0f);
-		particle_buffer[i*3+1].vel = glm::vec4(0.0f, i / ((float) num_axis_particles - 1.0f), 0.0f, 4.0f);
-		particle_buffer[i*3+2].vel = glm::vec4(0.0f, 0.0f, i / ((float) num_axis_particles - 1.0f), 4.0f);
+		for (float j = 0.0f; j < num_axis_particles; ++j)
+		{
+			for (float k = 0.0f; k < num_axis_particles; ++k)
+			{
+				particle_buffer.at(i * num_axis_particles * num_axis_particles + j * num_axis_particles + k).pos0 = glm::vec4(glm::vec3(i, j, k) / ((float) num_axis_particles - 1.0f), 3.0f);
+			}
+		}
 	}
-	for (float i = 3 * num_axis_particles; i < num_particles; ++i)
+	for (float i = num_axes_particles; i < num_particles; ++i)
 	{
-		// using vel for initial position
-		float unit             = i / ((float) num_particles - 1.0f);
-		particle_buffer[i].vel = glm::vec4(unit * 450.0f + 300.0f, unit, 0.0f, 8.0f);
+		float unit              = (i - num_axes_particles) / ((float) num_plot_particles - 1.0f);
+		particle_buffer.at(i).pos0 = glm::vec4(unit * 370.0f + 380.0f, unit, 0.0f, 8.0f);
 	}
 
-	compute.ubo.particle_count = num_particles;
+	compute.ubo.particle_count      = num_particles;
+	compute.ubo.axes_particle_count = num_axes_particles;
 
 	VkDeviceSize storage_buffer_size = particle_buffer.size() * sizeof(Particle);
 
@@ -451,7 +461,7 @@ void Plot::prepare_pipelines()
 	};
 	const std::vector<VkVertexInputAttributeDescription> vertex_input_attributes = {
 	    vkb::initializers::vertex_input_attribute_description(0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Particle, pos)),
-	    vkb::initializers::vertex_input_attribute_description(0, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Particle, vel))};
+	    vkb::initializers::vertex_input_attribute_description(0, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Particle, pos0))};
 	VkPipelineVertexInputStateCreateInfo vertex_input_state = vkb::initializers::pipeline_vertex_input_state_create_info();
 	vertex_input_state.vertexBindingDescriptionCount        = static_cast<uint32_t>(vertex_input_bindings.size());
 	vertex_input_state.pVertexBindingDescriptions           = vertex_input_bindings.data();

@@ -19,7 +19,7 @@
 struct Particle
 {
 	vec4 pos;
-	vec4 vel;
+	vec4 pos0;
 };
 
 // Binding 0 : Position storage buffer
@@ -31,7 +31,8 @@ layout(std140, binding = 0) buffer Pos
 layout (binding = 1) uniform UBO 
 {
 	float deltaT;
-	int particleCount;
+	uint particleCount;
+	uint axesParticleCount;
 } ubo;
 
 layout (constant_id = 1) const int SHARED_DATA_SIZE = 1024;
@@ -41,17 +42,44 @@ layout (constant_id = 4) const float SOFTEN = 0.05;
 
 layout (local_size_x_id = 0) in;
 
-// Share data between computer shader invocations to speed up caluclations
-shared vec4 sharedData[SHARED_DATA_SIZE];
+mat3 XYZ_to_LMS = mat3(
+	0.38971, 0.68898, -0.07868,
+	-0.22981, 1.18340, 0.04641,
+	0.0, 0.0, 1.0
+);
+mat3 XYZ_to_LMSD65 = mat3(
+	0.4002, 0.7076, -0.0808,
+	-0.2263, 1.1653, 0.0457,
+	0.0, 0.0, 0.9182
+);
 
-#define TIME_FACTOR 0.05
-
-float rbf(float u, float s, float x, int p) {
+float power(float x, int p) {
 	float ans = 1.0;
 	for (int i = 0; i < p; ++i) {
-		ans *= (x - u) / s;
+		ans *= x;
 	}
-	return exp(-ans);
+	return ans;
+}
+
+float G(float x, float u, float t1, float t2) {
+	float y = x - u;
+	return x < u ? exp(-t1 * t1 * y * y / 2) : exp(-t2 * t2 * y * y / 2);
+}
+
+float X(float x) {
+	return 1.056 * G(x, 599.8, 0.0264, 0.0323) + 0.362 * G(x, 442.0, 0.0624, 0.0374) - 0.065 * G(x, 501.1, 0.0490, 0.0382);
+}
+
+float Y(float x) {
+	return 0.821 * G(x, 568.8, 0.0213, 0.0247) + 0.286 * G(x, 530.9, 0.0613, 0.0322);
+}
+
+float Z(float x) {
+	return 1.217 * G(x, 437.0, 0.0845, 0.0278) + 0.681 * G(x, 459.0, 0.0385, 0.0725);
+}
+
+float rbf(float u, float s, float x, int p) {
+	return exp(-power((x - u) / s, p));
 }
 
 float rescale(float x) {
@@ -76,10 +104,11 @@ void main()
 	uint index = gl_GlobalInvocationID.x;
 	if (index >= ubo.particleCount) 
 		return;
-	vec4 vel = particles[index].vel; // vel is initial positions
-	if (index < 60) {
-		particles[index].pos = vel;
+	vec4 pos0 = particles[index].pos0;
+	if (index < ubo.axesParticleCount) {
+		particles[index].pos = pos0;
 	} else {
-		particles[index].pos = vec4(r(vel.x), g(vel.x), b(vel.x), vel.w);
+		vec3 XYZ = vec3(X(pos0.x), Y(pos0.x), Z(pos0.x));
+		particles[index].pos = vec4(XYZ, pos0.w);
 	}
 }
