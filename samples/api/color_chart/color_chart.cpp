@@ -19,10 +19,10 @@
 
 namespace
 {
-const uint32_t CUBE_SIZE            = 32;
+const uint32_t CUBE_SIZE            = 256;
 const uint32_t COLUMN_COUNT         = 8;
 const uint32_t ROW_COUNT            = 4;
-const uint32_t PADDING              = 1;
+const uint32_t PADDING              = 8;
 const uint32_t SAMPLE_WIDTH         = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING;
 const uint32_t SAMPLE_HEIGHT        = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
 const uint32_t SAVE_WIDTH           = 2880;        // has to be multiple of 32 for stbi_write_png to be properly aligned, idk why
@@ -693,7 +693,7 @@ void ColorChart::createTextureSampler()
 
 	VkSamplerCreateInfo samplerInfo     = vkb::initializers::sampler_create_info();
 	samplerInfo.magFilter               = VK_FILTER_NEAREST;
-	samplerInfo.minFilter               = VK_FILTER_NEAREST;
+	samplerInfo.minFilter               = VK_FILTER_LINEAR;
 	samplerInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	samplerInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	samplerInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
