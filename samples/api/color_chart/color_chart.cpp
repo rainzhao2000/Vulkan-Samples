@@ -20,14 +20,14 @@
 namespace
 {
 const uint32_t CUBE_SIZE            = 256;
-const uint32_t COLUMN_COUNT         = 8;
+const uint32_t COLUMN_COUNT         = 6;
 const uint32_t ROW_COUNT            = 4;
 const uint32_t PADDING              = 8;
 const uint32_t GRAYSCALE_WIDTH      = 5 * PADDING;
 const uint32_t SAMPLE_WIDTH         = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING + GRAYSCALE_WIDTH;
 const uint32_t SAMPLE_HEIGHT        = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
-const uint32_t SAVE_WIDTH           = 2880;        // has to be multiple of 32 for stbi_write_png to be properly aligned, idk why
-const uint32_t SAVE_HEIGHT          = 1920;
+const uint32_t SAVE_WIDTH           = 3072;        // has to be multiple of 32 for stbi_write_png to be properly aligned, idk why
+const uint32_t SAVE_HEIGHT          = 2048;
 const VkFormat SAMPLE_FORMAT        = VK_FORMAT_R32G32B32A32_SFLOAT;        // VK_FORMAT_R8G8B8A8_UNORM;
 const VkFormat SAVE_FORMAT          = VK_FORMAT_R32G32B32A32_SFLOAT;        // VK_FORMAT_R8G8B8A8_UNORM;
 const uint32_t SAVE_COMPONENTS      = 4;
@@ -926,9 +926,9 @@ void ColorChart::exportImage()
 	raw_data += subResourceLayout.offset;
 
 	vkb::fs::write_image_hdr(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS);
-	// vkb::fs::write_image(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS, SAVE_WIDTH * SAVE_COMPONENTS);
+	//vkb::fs::write_image(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS, SAVE_WIDTH * SAVE_COMPONENTS);
 
-	LOGI("Image saved to disk {}{}.png", vkb::fs::path::relative_paths.find(vkb::fs::path::Type::Screenshots)->second, SAVED_IMAGE_FILENAME);
+	LOGI("Image saved to disk {}{}.hdr", vkb::fs::path::relative_paths.find(vkb::fs::path::Type::Screenshots)->second, SAVED_IMAGE_FILENAME);
 
 	// Clean up resources
 	vkUnmapMemory(get_device().get_handle(), savedImageMemory);
