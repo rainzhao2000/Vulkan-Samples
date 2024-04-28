@@ -19,6 +19,11 @@
 
 #include "benchmark_mode/benchmark_mode.h"
 
+namespace
+{
+const bool DRAW_UI = true;
+}
+
 Plot::Plot()
 {
 	title       = "Compute shader N-body system";
@@ -140,7 +145,8 @@ void Plot::build_command_buffers()
 		VkDeviceSize offsets[1] = {0};
 		vkCmdBindVertexBuffers(draw_cmd_buffers[i], 0, 1, compute.storage_buffer->get(), offsets);
 		vkCmdDraw(draw_cmd_buffers[i], num_particles, 1, 0, 0);
-		draw_ui(draw_cmd_buffers[i]);
+		if (DRAW_UI)
+			draw_ui(draw_cmd_buffers[i]);
 		vkCmdEndRenderPass(draw_cmd_buffers[i]);
 
 		// Release barrier
@@ -271,7 +277,7 @@ void Plot::prepare_storage_buffers()
 	uint32_t num_axis_particles = 10;
 	uint32_t num_axes_particles = num_axis_particles * num_axis_particles * num_axis_particles;
 	uint32_t num_plot_particles = 1000;
-	num_particles            = num_axes_particles + num_plot_particles;
+	num_particles               = num_axes_particles + num_plot_particles;
 	std::vector<Particle> particle_buffer(num_particles);
 	for (float i = 0.0f; i < num_axis_particles; ++i)
 	{
@@ -285,8 +291,8 @@ void Plot::prepare_storage_buffers()
 	}
 	for (float i = num_axes_particles; i < num_particles; ++i)
 	{
-		float unit              = (i - num_axes_particles) / ((float) num_plot_particles - 1.0f);
-		particle_buffer.at(i).pos0 = glm::vec4(unit * 370.0f + 380.0f, unit, 0.0f, 8.0f);
+		float unit                 = (i - num_axes_particles) / ((float) num_plot_particles - 1.0f);
+		particle_buffer.at(i).pos0 = glm::vec4(unit * 400.0f + 380.0f, unit, 0.0f, 8.0f);
 	}
 
 	compute.ubo.particle_count      = num_particles;

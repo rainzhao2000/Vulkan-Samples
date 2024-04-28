@@ -17,6 +17,8 @@
 
 #include "color_chart.h"
 
+namespace
+{
 const uint32_t CUBE_SIZE            = 32;
 const uint32_t COLUMN_COUNT         = 8;
 const uint32_t ROW_COUNT            = 4;
@@ -31,6 +33,7 @@ const uint32_t SAVE_COMPONENTS      = 4;
 const char    *SAVED_IMAGE_FILENAME = "color_chart";
 const bool     DRAW_UI              = false;
 const float    MAX_TIME             = 5.0f;        // seconds
+}        // namespace
 
 struct PushConstant
 {
@@ -891,7 +894,7 @@ void ColorChart::exportImage()
 	raw_data += subResourceLayout.offset;
 
 	vkb::fs::write_image_hdr(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS);
-	//vkb::fs::write_image(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS, SAVE_WIDTH * SAVE_COMPONENTS);
+	// vkb::fs::write_image(raw_data, SAVED_IMAGE_FILENAME, SAVE_WIDTH, SAVE_HEIGHT, SAVE_COMPONENTS, SAVE_WIDTH * SAVE_COMPONENTS);
 
 	LOGI("Image saved to disk {}{}.png", vkb::fs::path::relative_paths.find(vkb::fs::path::Type::Screenshots)->second, SAVED_IMAGE_FILENAME);
 

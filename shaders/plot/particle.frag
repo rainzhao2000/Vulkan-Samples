@@ -42,5 +42,8 @@ mat3 XYZD65_to_RGB = mat3(
 
 void main () 
 {
+	if (length(gl_PointCoord - vec2(0.5)) > 0.5) {
+		discard;
+	}
 	outFragColor.rgb = XYZD65_to_RGB * inPos;
 }
