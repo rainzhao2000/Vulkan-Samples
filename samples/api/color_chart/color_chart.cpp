@@ -19,11 +19,12 @@
 
 namespace
 {
-const uint32_t CUBE_SIZE            = 256;
+const uint32_t CUBE_SIZE            = 4;
 const uint32_t COLUMN_COUNT         = 8;
 const uint32_t ROW_COUNT            = 4;
-const uint32_t PADDING              = 8;
-const uint32_t SAMPLE_WIDTH         = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING;
+const uint32_t PADDING              = 1;
+const uint32_t GRAYSCALE_WIDTH      = 8 * PADDING;
+const uint32_t SAMPLE_WIDTH         = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING + GRAYSCALE_WIDTH;
 const uint32_t SAMPLE_HEIGHT        = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
 const uint32_t SAVE_WIDTH           = 2880;        // has to be multiple of 32 for stbi_write_png to be properly aligned, idk why
 const uint32_t SAVE_HEIGHT          = 1920;
@@ -33,6 +34,21 @@ const uint32_t SAVE_COMPONENTS      = 4;
 const char    *SAVED_IMAGE_FILENAME = "color_chart";
 const bool     DRAW_UI              = false;
 const float    MAX_TIME             = 5.0f;        // seconds
+
+const float ncols          = (float) COLUMN_COUNT;
+const float nrows          = (float) ROW_COUNT;
+const float grayscaleWidth = ((float) GRAYSCALE_WIDTH) / SAMPLE_WIDTH;
+const float paddingx       = ((float) PADDING) / SAMPLE_WIDTH;
+const float paddingy       = ((float) PADDING) / SAMPLE_HEIGHT;
+const float spaceSize      = 2.0f;
+const float xSize          = spaceSize - (grayscaleWidth + paddingx) * 2;
+const float ySize          = spaceSize - paddingy * 2;
+const float xoffset        = -xSize / 2;
+const float yoffset        = -ySize / 2;
+const float bmax           = nrows * ncols - 1;
+const float boffset        = 0.0f;
+// float bmax      = 3.0f * nrows * ncols - 1;
+// float boffset = 2.0f * nrows * ncols / bmax;
 }        // namespace
 
 struct PushConstant
@@ -541,52 +557,49 @@ void ColorChart::createSavedFramebuffer()
 	VK_CHECK(vkCreateFramebuffer(device->get_handle(), &framebuffer_create_info, nullptr, &saved_framebuffer));
 }
 
+void setQuad(std::vector<ColoredVertex2D> &vertices, std::vector<uint16_t> &indices, int &index, int col, int row, float xoffset, float yoffset)
+{
+	float b = ((nrows - 1 - row) * ncols + col) / bmax + boffset;
+	vertices.emplace_back(ColoredVertex2D{
+	    {xSize * col / ncols + xoffset + paddingx, ySize * row / nrows + yoffset + paddingy},
+	    {0.0f, 1.0f, b}});
+	vertices.emplace_back(ColoredVertex2D{
+	    {xSize * (1 + col) / ncols + xoffset - paddingx, ySize * row / nrows + yoffset + paddingy},
+	    {1.0f, 1.0f, b}});
+	vertices.emplace_back(ColoredVertex2D{
+	    {xSize * (1 + col) / ncols + xoffset - paddingx, ySize * (1 + row) / nrows + yoffset - paddingy},
+	    {1.0f, 0.0f, b}});
+	vertices.emplace_back(ColoredVertex2D{
+	    {xSize * col / ncols + xoffset + paddingx, ySize * (1 + row) / nrows + yoffset - paddingy},
+	    {0.0f, 0.0f, b}});
+	indices.emplace_back(index);
+	indices.emplace_back(index + 1);
+	indices.emplace_back(index + 2);
+	indices.emplace_back(index + 2);
+	indices.emplace_back(index + 3);
+	indices.emplace_back(index);
+	index = vertices.size();
+}
+
 void ColorChart::createGeometry()
 {
 	std::vector<ColoredVertex2D> vertices;
 	std::vector<uint16_t>        indices;
-	float                        ncols     = (float) COLUMN_COUNT;
-	float                        nrows     = (float) ROW_COUNT;
-	float                        paddingx  = ((float) PADDING) / SAMPLE_WIDTH;
-	float                        paddingy  = paddingx * ncols / nrows;
-	float                        spaceSize = 2.0f;
-	float                        xSize     = spaceSize - paddingx * 2;
-	float                        ySize     = spaceSize - paddingy * 2;
-	float                        xoffset   = -xSize / 2;
-	float                        yoffset   = -ySize / 2;
-	float                        bmax      = nrows * ncols - 1;
-	float                        boffset   = 0.0f;
-	// float bmax      = 3.0f * nrows * ncols - 1;
-	// float boffset = 2.0f * nrows * ncols / bmax;
-	int index = vertices.size();
-	for (int row = 0; row < ROW_COUNT; ++row)
+	int                          index = vertices.size();
+	for (int col = 0; col < COLUMN_COUNT / 2; ++col)
 	{
-		for (int col = 0; col < COLUMN_COUNT; ++col)
+		for (int row = 0; row < ROW_COUNT; ++row)
 		{
-			float b = ((nrows - 1 - row) * ncols + col) / bmax + boffset;
-			// LOGI("row: {}, col: {}, b: {}", row, col, b);
-			vertices.emplace_back(ColoredVertex2D{
-			    {xSize * col / ncols + xoffset + paddingx, ySize * row / nrows + yoffset + paddingy},
-			    {0.0f, 1.0f, b}});
-			vertices.emplace_back(ColoredVertex2D{
-			    {xSize * (1 + col) / ncols + xoffset - paddingx, ySize * row / nrows + yoffset + paddingy},
-			    {1.0f, 1.0f, b}});
-			vertices.emplace_back(ColoredVertex2D{
-			    {xSize * (1 + col) / ncols + xoffset - paddingx, ySize * (1 + row) / nrows + yoffset - paddingy},
-			    {1.0f, 0.0f, b}});
-			vertices.emplace_back(ColoredVertex2D{
-			    {xSize * col / ncols + xoffset + paddingx, ySize * (1 + row) / nrows + yoffset - paddingy},
-			    {0.0f, 0.0f, b}});
-			indices.emplace_back(index);
-			indices.emplace_back(index + 1);
-			indices.emplace_back(index + 2);
-			indices.emplace_back(index + 2);
-			indices.emplace_back(index + 3);
-			indices.emplace_back(index);
-			index = vertices.size();
+			setQuad(vertices, indices, index, col, row, xoffset - grayscaleWidth, yoffset);
 		}
 	}
-
+	for (int col = COLUMN_COUNT / 2; col < COLUMN_COUNT; ++col)
+	{
+		for (int row = 0; row < ROW_COUNT; ++row)
+		{
+			setQuad(vertices, indices, index, col, row, xoffset + grayscaleWidth, yoffset);
+		}
+	}
 	indexCount = indices.size();
 	createVertexBuffer(vertices);
 	createIndexBuffer(indices);
