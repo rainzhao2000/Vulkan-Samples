@@ -20,10 +20,10 @@
 namespace
 {
 const uint32_t CUBE_SIZE            = 256;
-const uint32_t COLUMN_COUNT         = 6;
+const uint32_t COLUMN_COUNT         = 8;
 const uint32_t ROW_COUNT            = 4;
 const uint32_t PADDING              = 8;
-const uint32_t GRAYSCALE_WIDTH      = 5 * PADDING;
+const uint32_t GRAYSCALE_WIDTH      = 13 * PADDING;
 const uint32_t SAMPLE_WIDTH         = (CUBE_SIZE + PADDING) * COLUMN_COUNT + PADDING + GRAYSCALE_WIDTH;
 const uint32_t SAMPLE_HEIGHT        = (CUBE_SIZE + PADDING) * ROW_COUNT + PADDING;
 const uint32_t SAVE_WIDTH           = 3072;        // has to be multiple of 32 for stbi_write_png to be properly aligned, idk why
